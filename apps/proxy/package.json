@@ -15,7 +15,7 @@
     "express": "^5.1.0",
     "imapflow": "^1.0.181",
     "mailparser": "^3.7.5",
-    "nodemailer": "^6.10.1",
+    "nodemailer": "^8.0.4",
     "redis": "^5.8.2",
     "zod": "^3.25.76"
   },
