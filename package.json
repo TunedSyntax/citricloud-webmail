@@ -1,0 +1,20 @@
+{
+  "name": "citricloud-webmail",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/web",
+    "apps/proxy"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev:web": "npm run dev --workspace @citricloud/web",
+    "dev:proxy": "npm run dev --workspace @citricloud/proxy",
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
+  }
+}

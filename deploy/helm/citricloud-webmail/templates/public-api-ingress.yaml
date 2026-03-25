@@ -1,0 +1,28 @@
+{{- if .Values.publicApi.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "citricloud-webmail.fullname" . }}-public-api
+  labels:
+    {{- include "citricloud-webmail.labels" . | nindent 4 }}
+    component: public-api
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.publicApi.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.publicApi.host }}
+      secretName: {{ .Values.publicApi.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.publicApi.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "citricloud-webmail.fullname" . }}-public-api
+                port:
+                  number: {{ .Values.publicApi.port }}
+{{- end }}

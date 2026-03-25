@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: citricloud-webmail
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - webmail.citricloud.com
+      secretName: citricloud-webmail-tls
+  rules:
+    - host: webmail.citricloud.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: citricloud-webmail
+                port:
+                  number: 80

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: citricloud-webmail
+description: CitriCloud webmail client with React frontend, Node proxy, and Redis-backed sessions
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

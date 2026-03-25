@@ -1,0 +1,8 @@
+node_modules
+npm-debug.log
+apps/web/dist
+apps/proxy/dist
+.git
+.github
+.vscode
+coverage

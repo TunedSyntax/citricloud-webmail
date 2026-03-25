@@ -1,0 +1,52 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/tunedsyntax/citricloud-webmail
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: traefik
+  host: webmail.citricloud.com
+  tls:
+    enabled: true
+    secretName: citricloud-webmail-tls
+
+publicApi:
+  enabled: false
+  port: 8000
+  host: api.citricloud.com
+  tls:
+    enabled: true
+    secretName: citricloud-api-tls
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 192Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+redis:
+  image: redis:7.4-alpine
+  storageSize: 2Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+session:
+  ttlSeconds: 86400
+
+secrets:
+  sessionEncryptionKey: ""
+  redisPassword: ""
