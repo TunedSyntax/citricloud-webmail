@@ -1,0 +1,35 @@
+{
+  "folders": [
+    {
+      "name": "citricloud-webmail",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "git.defaultCloneDirectory": ".",
+    "github.gitAuthentication": true,
+    "git.openRepositoryInParentFolders": "never",
+    "files.exclude": {
+      "**/.git": true,
+      "**/.DS_Store": true,
+      "**/node_modules": true
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/dist": true,
+      "**/apps/proxy/public": true
+    },
+    "remote.autoForwardPorts": false,
+    "workbench.editorAssociations": {}
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-azuretools.vscode-docker",
+      "dbaeumer.vscode-eslint",
+      "esbenp.prettier-vscode",
+      "bradlc.vscode-tailwindcss",
+      "GitHub.vscode-pull-request-github"
+    ]
+  },
+  "remoteAuthority": null
+}

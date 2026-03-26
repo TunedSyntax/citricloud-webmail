@@ -1,0 +1,61 @@
+# docker-compose.yml — citricloud-webmail ONLY
+# NEVER combine with or reference the local "citricloud" project.
+# GitHub repo: https://github.com/TunedSyntax/citricloud-webmail
+# Registry:    ghcr.io/tunedsyntax/citricloud-webmail
+#
+# ─── Port allocation map (RESERVED — do not reuse in any other project) ──
+#   citricloud (local):          4000 (backend)  5173 (frontend)
+#   citricloud-webmail local:    8880 (prod image)
+#   citricloud-webmail dev:      8881 (local build)
+#   Production (k3s-prod):       webmail.citricloud.com → 443 via Traefik
+#                                DNS A → 159.69.246.126 (k3s-prod, no proxy)
+# ─────────────────────────────────────────────────────────────────────────
+
+# ─── Docker project name ──────────────────────────────────────────────────
+# This is what Docker Desktop shows as the project/stack name.
+# It MUST stay "citricloud-webmail" and never be changed to "citricloud".
+name: citricloud-webmail
+
+networks:
+  # Isolated network — never shared with the "citricloud" local project
+  webmail-net:
+    name: citricloud-webmail-net
+    driver: bridge
+
+services:
+  # ─── Production image (pre-built from GHCR) ──────────────────────────────
+  webmail:
+    image: ghcr.io/tunedsyntax/citricloud-webmail:latest
+    container_name: citricloud-webmail
+    restart: unless-stopped
+    ports:
+      - "8880:8080"   # citricloud-webmail PROD — reserved 8880, do not reuse
+    networks:
+      - webmail-net
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+    labels:
+      com.citricloud.project: "citricloud-webmail"
+      com.citricloud.repo: "https://github.com/TunedSyntax/citricloud-webmail"
+
+  # ─── Local build (override for development / CI testing) ─────────────────
+  webmail-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: citricloud-webmail:dev
+    container_name: citricloud-webmail-dev
+    restart: "no"
+    ports:
+      - "8881:8080"   # citricloud-webmail DEV — reserved 8881, no conflict with prod or citricloud
+    networks:
+      - webmail-net
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+    labels:
+      com.citricloud.project: "citricloud-webmail"
+      com.citricloud.repo: "https://github.com/TunedSyntax/citricloud-webmail"
+    profiles:
+      - dev-build

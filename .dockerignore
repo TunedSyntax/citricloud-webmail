@@ -1,3 +1,6 @@
+# citricloud-webmail — Docker build exclusions
+# Repo: https://github.com/TunedSyntax/citricloud-webmail
+# Image: ghcr.io/tunedsyntax/citricloud-webmail
 node_modules
 npm-debug.log
 apps/web/dist
@@ -6,3 +9,6 @@ apps/proxy/dist
 .github
 .vscode
 coverage
+*.code-workspace
+docker-compose.yml
+deploy/

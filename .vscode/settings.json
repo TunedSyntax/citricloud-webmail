@@ -1,0 +1,27 @@
+{
+  "git.repositoryScanning": false,
+  "git.openRepositoryInParentFolders": "never",
+  "git.alwaysShowStagedChangesResourceGroup": true,
+  "github.gitAuthentication": true,
+  "remote.extensionKind": {},
+  "workbench.editor.labelFormat": "short",
+
+  "docker.defaultRegistryPath": "ghcr.io/tunedsyntax",
+  "docker.images.label": "citricloud-webmail",
+  "docker.showStartPage": false,
+
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/apps/proxy/public": true,
+    "**/.git": true
+  },
+
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/dist/**": true
+  },
+
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true
+}

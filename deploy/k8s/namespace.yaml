@@ -2,3 +2,8 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: citricloud-webmail
+  labels:
+    app.kubernetes.io/part-of: citricloud-webmail
+    app.kubernetes.io/managed-by: citricloud-webmail-repo
+    # ISOLATION: this namespace is ONLY for citricloud-webmail.
+    # Never deploy citricloud (local) workloads here.

@@ -2,6 +2,10 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: citricloud-webmail
+  namespace: citricloud-webmail
+  labels:
+    app.kubernetes.io/name: citricloud-webmail
+    app.kubernetes.io/part-of: citricloud-webmail
 spec:
   replicas: 2
   selector:
@@ -12,6 +16,8 @@ spec:
       labels:
         app: citricloud-webmail
     spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: webmail
           image: ghcr.io/tunedsyntax/citricloud-webmail:latest
