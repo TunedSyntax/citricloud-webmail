@@ -16,6 +16,7 @@
     "build": "npm run build --workspaces",
     "guard:repo": "node scripts/repo-guard.mjs --mode=repo",
     "guard:staged": "node scripts/repo-guard.mjs --mode=staged",
+    "guard:version": "node scripts/version-policy.mjs",
     "lint": "npm run lint --workspaces",
     "typecheck": "npm run typecheck --workspaces"
   }

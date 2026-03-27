@@ -41,6 +41,29 @@ npm run guard:repo
 
 Local hook setup and unlock instructions are documented in `REPO_LOCK.md`.
 
+## Version policy
+
+GitHub tags and releases follow a strict manual sequence:
+
+- Alpha: `v0.0.1-alpha`, `v0.0.1-alpha.1`
+- Beta: `v0.0.1-beta` through `v0.0.1-beta.9`
+- Release candidate: `v0.0.1-rc`, `v0.0.1-rc1`, `v0.0.1-rc2`
+- Stable release: `v0.0.1`
+
+Rules:
+
+- `alpha`, `beta`, and `rc` are GitHub prereleases.
+- Versions must not skip within the same track.
+- A stable release blocks later prereleases for the same base version.
+
+Validate a tag locally with:
+
+```bash
+npm run guard:version -- v0.0.1-beta.4
+```
+
+Production visibility is driven by the last deployed tag. A plain edit in VS Code does not change `webmail.citricloud.com` until you push a version tag that triggers the deploy workflow.
+
 ## Session storage
 
 The proxy no longer keeps authenticated sessions in-memory.

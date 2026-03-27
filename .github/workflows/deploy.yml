@@ -1,8 +1,6 @@
 name: Deploy Webmail
 
 on:
-  release:
-    types: [published]
   push:
     tags:
       - "v*"
@@ -40,15 +38,14 @@ jobs:
       - name: Validate repository guardrails
         run: node scripts/repo-guard.mjs --mode=repo
 
+      - name: Validate version policy
+        run: node scripts/version-policy.mjs
+
       - name: Resolve release tag
         id: tag
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            TAG="${{ github.event.release.tag_name }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
+          TAG="${GITHUB_REF_NAME}"
 
           if [ -z "$TAG" ]; then
             echo "Tag could not be resolved." >&2
