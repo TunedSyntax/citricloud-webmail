@@ -22,7 +22,7 @@ spec:
           args:
             - redis-server
             - --appendonly
-            - yes
+            - "yes"
             - --requirepass
             - $(REDIS_PASSWORD)
           env:
