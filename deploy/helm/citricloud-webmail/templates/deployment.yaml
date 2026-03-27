@@ -15,6 +15,10 @@ spec:
         app: {{ include "citricloud-webmail.fullname" . }}
         {{- include "citricloud-webmail.labels" . | nindent 8 }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: webmail
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"

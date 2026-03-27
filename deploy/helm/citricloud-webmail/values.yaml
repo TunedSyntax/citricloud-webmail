@@ -5,6 +5,9 @@ image:
   tag: v0.0.1-beta.3
   pullPolicy: IfNotPresent
 
+imagePullSecrets:
+  - name: ghcr-pull-secret
+
 service:
   port: 80
   targetPort: 8080

@@ -169,6 +169,21 @@ jobs:
             exit 1
           fi
 
+      - name: Ensure GHCR pull secret
+        shell: bash
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          NAMESPACE="$DEFAULT_NAMESPACE"
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret docker-registry ghcr-pull-secret \
+            --namespace "$NAMESPACE" \
+            --docker-server="${{ env.REGISTRY }}" \
+            --docker-username="$REGISTRY_USERNAME" \
+            --docker-password="$REGISTRY_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy with Helm
         shell: bash
         env:
@@ -254,6 +269,21 @@ jobs:
             exit 1
           fi
 
+      - name: Ensure GHCR pull secret
+        shell: bash
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          NAMESPACE="$DEFAULT_NAMESPACE"
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret docker-registry ghcr-pull-secret \
+            --namespace "$NAMESPACE" \
+            --docker-server="${{ env.REGISTRY }}" \
+            --docker-username="$REGISTRY_USERNAME" \
+            --docker-password="$REGISTRY_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy with Helm
         shell: bash
         env:
@@ -338,6 +368,21 @@ jobs:
             echo "SESSION_ENCRYPTION_KEY and REDIS_PASSWORD must be set in Production secrets." >&2
             exit 1
           fi
+
+      - name: Ensure GHCR pull secret
+        shell: bash
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          NAMESPACE="$DEFAULT_NAMESPACE"
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret docker-registry ghcr-pull-secret \
+            --namespace "$NAMESPACE" \
+            --docker-server="${{ env.REGISTRY }}" \
+            --docker-username="$REGISTRY_USERNAME" \
+            --docker-password="$REGISTRY_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy with Helm
         shell: bash
