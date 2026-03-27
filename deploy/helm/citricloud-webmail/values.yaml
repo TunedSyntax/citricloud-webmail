@@ -15,7 +15,11 @@ app:
 ingress:
   enabled: true
   className: traefik
-  annotations: {}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: le
   host: webmail.citricloud.com
   tls:
     enabled: true
@@ -23,7 +27,11 @@ ingress:
 
 publicApi:
   enabled: false
-  annotations: {}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: le
   port: 8000
   host: api.citricloud.com
   tls:
