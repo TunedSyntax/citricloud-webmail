@@ -31,6 +31,16 @@ Public production URL: `https://webmail.citricloud.com`
 
 Saved browser sessions are restored automatically and the account menu now supports switching between previously authenticated accounts or signing out of the current session.
 
+## Repository guardrails
+
+This repository is intentionally locked to `citricloud-webmail` so it does not drift into the separate `citricloud` repo configuration.
+
+```bash
+npm run guard:repo
+```
+
+Local hook setup and unlock instructions are documented in `REPO_LOCK.md`.
+
 ## Session storage
 
 The proxy no longer keeps authenticated sessions in-memory.
