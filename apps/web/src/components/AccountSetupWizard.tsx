@@ -4,6 +4,7 @@ import { ArrowRight, Cable, History, Lock, Mail, Server } from "lucide-react";
 
 import { detectProfile, getProfiles, login, type AuthSession, type ConnectionProfile, type MailFolder } from "../lib/api";
 import type { SavedAccount } from "../App";
+import logoUrl from "../assets/logo.svg";
 
 type AccountSetupWizardProps = {
   onAuthenticated: (payload: { session: AuthSession; folders: MailFolder[] }) => void;
@@ -81,6 +82,7 @@ export function AccountSetupWizard({ onAuthenticated, onResumeAccount, recentAcc
       <div className="absolute inset-x-0 top-0 h-48 bg-[radial-gradient(circle_at_top_right,_rgba(25,119,255,0.18),_transparent_55%)]" />
       <div className="relative grid gap-8 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="space-y-6">
+          <img src={logoUrl} alt="CitriCloud" className="h-10 w-auto" />
           <div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-brand-700">
             <Cable className="h-4 w-4" />
             CitriCloud Setup Wizard

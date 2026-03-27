@@ -31,6 +31,7 @@ import {
 } from "../lib/api";
 import type { SavedAccount } from "../App";
 import { ComposePanel, type ComposeDraft } from "./ComposePanel";
+import logoUrl from "../assets/logo.svg";
 
 type MailDashboardProps = {
   session: AuthSession;
@@ -182,8 +183,8 @@ export function MailDashboard({
     <>
       <section className="flex min-h-[840px] flex-col overflow-hidden rounded-[32px] border border-white/60 bg-white/80 shadow-glow backdrop-blur">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-surface-200 px-6 py-5">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-700">CitriCloud Mail Console</p>
+        <div className="flex flex-col gap-1">
+          <img src={logoUrl} alt="CitriCloud" className="h-8 w-auto" />
           <h2 className="text-2xl font-semibold text-surface-900">Operational inbox</h2>
         </div>
 
