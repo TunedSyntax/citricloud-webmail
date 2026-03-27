@@ -15,6 +15,7 @@ app:
 ingress:
   enabled: true
   className: traefik
+  annotations: {}
   host: webmail.citricloud.com
   tls:
     enabled: true
@@ -22,6 +23,7 @@ ingress:
 
 publicApi:
   enabled: false
+  annotations: {}
   port: 8000
   host: api.citricloud.com
   tls:

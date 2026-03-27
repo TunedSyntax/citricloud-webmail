@@ -6,6 +6,10 @@ metadata:
   labels:
     {{- include "citricloud-webmail.labels" . | nindent 4 }}
     component: public-api
+  {{- with .Values.publicApi.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   {{- if .Values.publicApi.tls.enabled }}

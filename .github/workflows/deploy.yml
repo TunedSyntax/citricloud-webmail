@@ -119,6 +119,9 @@ jobs:
     needs: build-and-push
     env:
       WEB_HOST: dev.webmail.citricloud.com
+      API_HOST: api-dev.webmail.citricloud.com
+      TLS_SECRET: citricloud-webmail-dev-tls
+      API_TLS_SECRET: citricloud-webmail-api-dev-tls
       DEFAULT_NAMESPACE: citricloud-webmail-dev
       KUBE_NAMESPACE: ${{ secrets.KUBE_NAMESPACE }}
       API_URL: ${{ secrets.API_URL }}
@@ -182,6 +185,18 @@ jobs:
             --set image.repository="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
             --set image.tag="$IMAGE_TAG" \
             --set ingress.host="$WEB_HOST" \
+            --set ingress.tls.secretName="$TLS_SECRET" \
+            --set ingress.annotations.cert-manager\.io/cluster-issuer="letsencrypt-prod" \
+            --set ingress.annotations.traefik\.ingress\.kubernetes\.io/router\.entrypoints="web,websecure" \
+            --set ingress.annotations.traefik\.ingress\.kubernetes\.io/router\.tls="true" \
+            --set ingress.annotations.traefik\.ingress\.kubernetes\.io/router\.tls\.certresolver="le" \
+            --set publicApi.enabled=true \
+            --set publicApi.host="$API_HOST" \
+            --set publicApi.tls.secretName="$API_TLS_SECRET" \
+            --set publicApi.annotations.cert-manager\.io/cluster-issuer="letsencrypt-prod" \
+            --set publicApi.annotations.traefik\.ingress\.kubernetes\.io/router\.entrypoints="web,websecure" \
+            --set publicApi.annotations.traefik\.ingress\.kubernetes\.io/router\.tls="true" \
+            --set publicApi.annotations.traefik\.ingress\.kubernetes\.io/router\.tls\.certresolver="le" \
             --set-string app.apiUrl="$API_URL" \
             --set-string secrets.sessionEncryptionKey="$SESSION_ENCRYPTION_KEY" \
             --set-string secrets.redisPassword="$REDIS_PASSWORD"
@@ -198,6 +213,9 @@ jobs:
     needs: build-and-push
     env:
       WEB_HOST: staging.webmail.citricloud.com
+      API_HOST: api-staging.webmail.citricloud.com
+      TLS_SECRET: citricloud-webmail-staging-tls
+      API_TLS_SECRET: citricloud-webmail-api-staging-tls
       DEFAULT_NAMESPACE: citricloud-webmail-staging
       KUBE_NAMESPACE: ${{ secrets.KUBE_NAMESPACE }}
       API_URL: ${{ secrets.API_URL }}
@@ -261,6 +279,18 @@ jobs:
             --set image.repository="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
             --set image.tag="$IMAGE_TAG" \
             --set ingress.host="$WEB_HOST" \
+            --set ingress.tls.secretName="$TLS_SECRET" \
+            --set ingress.annotations.cert-manager\.io/cluster-issuer="letsencrypt-prod" \
+            --set ingress.annotations.traefik\.ingress\.kubernetes\.io/router\.entrypoints="web,websecure" \
+            --set ingress.annotations.traefik\.ingress\.kubernetes\.io/router\.tls="true" \
+            --set ingress.annotations.traefik\.ingress\.kubernetes\.io/router\.tls\.certresolver="le" \
+            --set publicApi.enabled=true \
+            --set publicApi.host="$API_HOST" \
+            --set publicApi.tls.secretName="$API_TLS_SECRET" \
+            --set publicApi.annotations.cert-manager\.io/cluster-issuer="letsencrypt-prod" \
+            --set publicApi.annotations.traefik\.ingress\.kubernetes\.io/router\.entrypoints="web,websecure" \
+            --set publicApi.annotations.traefik\.ingress\.kubernetes\.io/router\.tls="true" \
+            --set publicApi.annotations.traefik\.ingress\.kubernetes\.io/router\.tls\.certresolver="le" \
             --set-string app.apiUrl="$API_URL" \
             --set-string secrets.sessionEncryptionKey="$SESSION_ENCRYPTION_KEY" \
             --set-string secrets.redisPassword="$REDIS_PASSWORD"
@@ -277,6 +307,9 @@ jobs:
     needs: build-and-push
     env:
       WEB_HOST: webmail.citricloud.com
+      API_HOST: api.webmail.citricloud.com
+      TLS_SECRET: citricloud-webmail-tls
+      API_TLS_SECRET: citricloud-webmail-api-tls
       DEFAULT_NAMESPACE: citricloud-webmail
       KUBE_NAMESPACE: ${{ secrets.KUBE_NAMESPACE }}
       API_URL: ${{ secrets.API_URL }}
@@ -340,6 +373,18 @@ jobs:
             --set image.repository="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
             --set image.tag="$IMAGE_TAG" \
             --set ingress.host="$WEB_HOST" \
+            --set ingress.tls.secretName="$TLS_SECRET" \
+            --set ingress.annotations.cert-manager\.io/cluster-issuer="letsencrypt-prod" \
+            --set ingress.annotations.traefik\.ingress\.kubernetes\.io/router\.entrypoints="web,websecure" \
+            --set ingress.annotations.traefik\.ingress\.kubernetes\.io/router\.tls="true" \
+            --set ingress.annotations.traefik\.ingress\.kubernetes\.io/router\.tls\.certresolver="le" \
+            --set publicApi.enabled=true \
+            --set publicApi.host="$API_HOST" \
+            --set publicApi.tls.secretName="$API_TLS_SECRET" \
+            --set publicApi.annotations.cert-manager\.io/cluster-issuer="letsencrypt-prod" \
+            --set publicApi.annotations.traefik\.ingress\.kubernetes\.io/router\.entrypoints="web,websecure" \
+            --set publicApi.annotations.traefik\.ingress\.kubernetes\.io/router\.tls="true" \
+            --set publicApi.annotations.traefik\.ingress\.kubernetes\.io/router\.tls\.certresolver="le" \
             --set-string app.apiUrl="$API_URL" \
             --set-string secrets.sessionEncryptionKey="$SESSION_ENCRYPTION_KEY" \
             --set-string secrets.redisPassword="$REDIS_PASSWORD"
