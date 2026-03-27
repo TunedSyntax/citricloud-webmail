@@ -123,7 +123,6 @@ jobs:
       TLS_SECRET: citricloud-webmail-dev-tls
       API_TLS_SECRET: citricloud-webmail-api-dev-tls
       DEFAULT_NAMESPACE: citricloud-webmail-dev
-      KUBE_NAMESPACE: ${{ secrets.KUBE_NAMESPACE }}
       API_URL: ${{ secrets.API_URL }}
       KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
       SESSION_ENCRYPTION_KEY: ${{ secrets.SESSION_ENCRYPTION_KEY }}
@@ -175,7 +174,7 @@ jobs:
         env:
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
         run: |
-          NAMESPACE="${KUBE_NAMESPACE:-$DEFAULT_NAMESPACE}"
+          NAMESPACE="$DEFAULT_NAMESPACE"
 
           helm upgrade --install citricloud-webmail-dev deploy/helm/citricloud-webmail \
             --namespace "$NAMESPACE" \
@@ -209,7 +208,6 @@ jobs:
       TLS_SECRET: citricloud-webmail-staging-tls
       API_TLS_SECRET: citricloud-webmail-api-staging-tls
       DEFAULT_NAMESPACE: citricloud-webmail-staging
-      KUBE_NAMESPACE: ${{ secrets.KUBE_NAMESPACE }}
       API_URL: ${{ secrets.API_URL }}
       KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
       SESSION_ENCRYPTION_KEY: ${{ secrets.SESSION_ENCRYPTION_KEY }}
@@ -261,7 +259,7 @@ jobs:
         env:
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
         run: |
-          NAMESPACE="${KUBE_NAMESPACE:-$DEFAULT_NAMESPACE}"
+          NAMESPACE="$DEFAULT_NAMESPACE"
 
           helm upgrade --install citricloud-webmail-staging deploy/helm/citricloud-webmail \
             --namespace "$NAMESPACE" \
@@ -295,7 +293,6 @@ jobs:
       TLS_SECRET: citricloud-webmail-tls
       API_TLS_SECRET: citricloud-webmail-api-tls
       DEFAULT_NAMESPACE: citricloud-webmail
-      KUBE_NAMESPACE: ${{ secrets.KUBE_NAMESPACE }}
       API_URL: ${{ secrets.API_URL }}
       KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
       SESSION_ENCRYPTION_KEY: ${{ secrets.SESSION_ENCRYPTION_KEY }}
@@ -347,7 +344,7 @@ jobs:
         env:
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
         run: |
-          NAMESPACE="${KUBE_NAMESPACE:-$DEFAULT_NAMESPACE}"
+          NAMESPACE="$DEFAULT_NAMESPACE"
 
           helm upgrade --install citricloud-webmail deploy/helm/citricloud-webmail \
             --namespace "$NAMESPACE" \
