@@ -9,6 +9,9 @@ service:
   port: 80
   targetPort: 8080
 
+app:
+  apiUrl: ""
+
 ingress:
   enabled: true
   className: traefik
