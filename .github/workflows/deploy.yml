@@ -1,0 +1,122 @@
+name: Deploy Webmail
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: deploy-webmail-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: tunedsyntax/citricloud-webmail
+  GITOPS_BRANCH: main
+
+jobs:
+  build-and-push:
+    name: Build and Push Image
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.value }}
+      image_ref: ${{ steps.image.outputs.value }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+
+          if [ -z "$TAG" ]; then
+            echo "Tag could not be resolved." >&2
+            exit 1
+          fi
+
+          echo "value=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Compose image reference
+        id: image
+        shell: bash
+        run: |
+          IMAGE_REF="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}"
+          echo "value=$IMAGE_REF" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.value }}
+
+  update-gitops-manifests:
+    name: Update GitOps Manifests
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.GITOPS_BRANCH }}
+
+      - name: Update image tags in manifests
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+        run: |
+          if [ -z "$IMAGE_TAG" ]; then
+            echo "Release image tag is required." >&2
+            exit 1
+          fi
+
+          sed -i -E "s#(^[[:space:]]*image:[[:space:]]*ghcr\.io/tunedsyntax/citricloud-webmail:).*#\1${IMAGE_TAG}#" deploy/k8s/webmail-deployment.yaml
+          sed -i -E "s#(^[[:space:]]*tag:[[:space:]]*).*#\1${IMAGE_TAG}#" deploy/helm/citricloud-webmail/values.yaml
+
+      - name: Validate webmail-only scope
+        shell: bash
+        run: |
+          if git diff --name-only | grep -Eq 'public-api|api\.citricloud\.com'; then
+            echo "Refusing to update API-related manifests." >&2
+            exit 1
+          fi
+
+      - name: Commit and push manifest updates
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No manifest changes detected."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy/k8s/webmail-deployment.yaml deploy/helm/citricloud-webmail/values.yaml
+          git commit -m "chore(release): deploy webmail ${{ needs.build-and-push.outputs.image_tag }}"
+          git push origin "${{ env.GITOPS_BRANCH }}"
