@@ -210,6 +210,7 @@ export function MailDashboard({
   const [composerDraft, setComposerDraft] = useState<ComposeDraft | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: MessagePreview } | null>(null);
+  const [selectedMessageSourceFolder, setSelectedMessageSourceFolder] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const contentGridRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -227,7 +228,7 @@ export function MailDashboard({
 
   const availableFolders = foldersQuery.data?.folders ?? initialFolders;
   const selectedPreview = (messagesQuery.data?.messages ?? []).find((message) => message.uid === selectedUid) ?? null;
-  const selectedMessageFolder = selectedPreview?.folder ?? activeFolder;
+  const selectedMessageFolder = selectedMessageSourceFolder ?? selectedPreview?.folder ?? (activeFolder === "__STARRED__" ? "INBOX" : activeFolder);
 
   const selectedMessageQuery = useQuery({
     queryKey: ["message", session.token, selectedMessageFolder, selectedUid],
@@ -285,9 +286,19 @@ export function MailDashboard({
 
   useEffect(() => {
     if (messagesQuery.data?.messages.length && selectedUid === null) {
-      setSelectedUid(messagesQuery.data.messages[0].uid);
+      const firstMessage = messagesQuery.data.messages[0];
+      setSelectedUid(firstMessage.uid);
+      setSelectedMessageSourceFolder(firstMessage.folder);
     }
   }, [messagesQuery.data, selectedUid]);
+
+  useEffect(() => {
+    if (!selectedPreview) {
+      return;
+    }
+
+    setSelectedMessageSourceFolder(selectedPreview.folder);
+  }, [selectedPreview]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -380,7 +391,9 @@ export function MailDashboard({
 
     const stillExists = messagesQuery.data.messages.some((message) => message.uid === selectedUid);
     if (!stillExists) {
-      setSelectedUid(messagesQuery.data.messages[0]?.uid ?? null);
+      const firstMessage = messagesQuery.data.messages[0];
+      setSelectedUid(firstMessage?.uid ?? null);
+      setSelectedMessageSourceFolder(firstMessage?.folder ?? null);
     }
   }, [messagesQuery.data?.messages, selectedUid]);
 
@@ -395,10 +408,10 @@ export function MailDashboard({
       }
       setContextMenu(null);
     };
-    window.addEventListener("click", handleClose);
+    window.addEventListener("pointerdown", handleClose, true);
 
     return () => {
-      window.removeEventListener("click", handleClose);
+      window.removeEventListener("pointerdown", handleClose, true);
     };
   }, [contextMenu]);
 
@@ -476,9 +489,32 @@ export function MailDashboard({
 
   const detail = selectedMessageQuery.data?.message;
   const switchableAccounts = savedAccounts.filter((account) => account.session.token !== session.token);
-  const archiveFolderPath = resolveFolderPath(availableFolders, ["archive", "all mail"]);
-  const spamFolderPath = resolveFolderPath(availableFolders, ["junk", "spam"]);
-  const trashFolderPath = resolveFolderPath(availableFolders, ["trash", "deleted"]);
+  const archiveFolderPath =
+    availableFolders.find((folder) => folder.specialUse === "\\Archive" || folder.specialUse === "\\All")?.path ??
+    resolveFolderPath(availableFolders, ["archive", "all mail"]);
+  const spamFolderPath =
+    availableFolders.find((folder) => folder.specialUse === "\\Junk")?.path ?? resolveFolderPath(availableFolders, ["junk", "spam"]);
+  const trashFolderPath =
+    availableFolders.find((folder) => folder.specialUse === "\\Trash")?.path ?? resolveFolderPath(availableFolders, ["trash", "deleted"]);
+
+  const resolveActionFolder = (uid: number | null, preferredFolder?: string | null) => {
+    if (preferredFolder && preferredFolder !== "__STARRED__") {
+      return preferredFolder;
+    }
+
+    if (uid !== null) {
+      const sourceMessage = (messagesQuery.data?.messages ?? []).find((message) => message.uid === uid);
+      if (sourceMessage?.folder && sourceMessage.folder !== "__STARRED__") {
+        return sourceMessage.folder;
+      }
+    }
+
+    if (selectedMessageSourceFolder && selectedMessageSourceFolder !== "__STARRED__") {
+      return selectedMessageSourceFolder;
+    }
+
+    return activeFolder === "__STARRED__" ? "INBOX" : activeFolder;
+  };
 
   const activeSidebarLabel = useMemo(() => {
     if (activeFolder === "__STARRED__") {
@@ -536,7 +572,7 @@ export function MailDashboard({
 
   const moveSelectedMessage = (destination: string | null, override?: { folder: string; uid: number }) => {
     const targetUid = override?.uid ?? selectedUid;
-    const sourceFolder = override?.folder ?? selectedMessageFolder;
+    const sourceFolder = resolveActionFolder(targetUid, override?.folder ?? selectedMessageFolder);
 
     if (!targetUid || !destination) {
       return;
@@ -552,7 +588,7 @@ export function MailDashboard({
 
   const deleteSelectedMessage = (override?: { folder: string; uid: number }) => {
     const targetUid = override?.uid ?? selectedUid;
-    const sourceFolder = override?.folder ?? selectedMessageFolder;
+    const sourceFolder = resolveActionFolder(targetUid, override?.folder ?? selectedMessageFolder);
 
     if (!targetUid) {
       return;
@@ -568,7 +604,10 @@ export function MailDashboard({
   };
 
   const updateMessageState = (payload: { folder: string; uid: number; unread?: boolean; flagged?: boolean }) => {
-    updateFlagsMutation.mutate(payload);
+    updateFlagsMutation.mutate({
+      ...payload,
+      folder: resolveActionFolder(payload.uid, payload.folder)
+    });
     setContextMenu(null);
   };
 
@@ -749,9 +788,10 @@ export function MailDashboard({
                     if (item.label === "Labels") {
                       const nextState = !labelsOpen;
                       setLabelsOpen(nextState);
-                      if (nextState && labelFolders[0]) {
+                      if (nextState && labelFolders[0] && !labelFolders.some((folder) => folder.path === activeFolder)) {
                         setActiveFolder(labelFolders[0].path);
                         setSelectedUid(null);
+                        setSelectedMessageSourceFolder(null);
                       }
                       return;
                     }
@@ -760,6 +800,7 @@ export function MailDashboard({
                     }
                     setLabelsOpen(false);
                     setSelectedUid(null);
+                    setSelectedMessageSourceFolder(null);
                   }}
                 >
                   <LucideIcon className="h-4 w-4" />
@@ -782,6 +823,7 @@ export function MailDashboard({
                       setActiveFolder(folder.path);
                       setLabelsOpen(true);
                       setSelectedUid(null);
+                      setSelectedMessageSourceFolder(null);
                     }}
                   >
                     {folder.name}
@@ -897,17 +939,22 @@ export function MailDashboard({
                   }`}
                   role="button"
                   tabIndex={0}
-                  onClick={() => setSelectedUid(message.uid)}
+                  onClick={() => {
+                    setSelectedUid(message.uid);
+                    setSelectedMessageSourceFolder(message.folder);
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
                       setSelectedUid(message.uid);
+                      setSelectedMessageSourceFolder(message.folder);
                     }
                   }}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
                     setSelectedUid(message.uid);
+                    setSelectedMessageSourceFolder(message.folder);
                     setContextMenu({
                       x: event.clientX,
                       y: event.clientY,
@@ -1060,6 +1107,7 @@ export function MailDashboard({
           ref={contextMenuRef}
           className="fixed z-50 min-w-44 rounded-xl border border-surface-200 bg-white p-2 shadow-panel"
           style={{ left: Math.max(8, contextMenu.x), top: Math.max(8, contextMenu.y) }}
+          onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >
           <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => moveSelectedMessage(archiveFolderPath, { folder: contextMenu.message.folder, uid: contextMenu.message.uid })}>
