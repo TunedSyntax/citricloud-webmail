@@ -19,12 +19,14 @@ import {
 import {
   deleteMessage as deleteMessageRequest,
   getFolders,
+  getEnvironmentVersions,
   getMessage,
   getMessages,
   logout as logoutRequest,
   moveMessage as moveMessageRequest,
   sendMessage as sendMessageRequest,
   type AuthSession,
+  type EnvironmentVersions,
   type MailFolder,
   type MessageDetail,
   type SendMessagePayload
@@ -75,6 +77,9 @@ export function MailDashboard({
   const [searchText, setSearchText] = useState("");
   const [readingPane, setReadingPane] = useState<"right" | "bottom">("right");
   const [filterUnread, setFilterUnread] = useState(false);
+  const [dateRange, setDateRange] = useState<"all" | "today" | "7d" | "30d">("all");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | "ops" | "security" | "billing">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "unread" | "flagged">("all");
   const [composerDraft, setComposerDraft] = useState<ComposeDraft | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
@@ -93,6 +98,12 @@ export function MailDashboard({
     queryKey: ["message", session.token, activeFolder, selectedUid],
     queryFn: () => getMessage(session.token, activeFolder, selectedUid as number),
     enabled: selectedUid !== null
+  });
+
+  const versionsQuery = useQuery<EnvironmentVersions>({
+    queryKey: ["environment-versions"],
+    queryFn: getEnvironmentVersions,
+    staleTime: 5 * 60 * 1000
   });
 
   const deleteMutation = useMutation({
@@ -134,9 +145,56 @@ export function MailDashboard({
   }, [messagesQuery.data, selectedUid]);
 
   const filteredMessages = useMemo(() => {
+    const now = Date.now();
+    const categoryKeywords: Record<"ops" | "security" | "billing", string[]> = {
+      ops: ["ops", "operation", "outage", "incident", "oncall", "deployment", "infra"],
+      security: ["security", "auth", "phish", "breach", "vulnerability", "alert", "spam"],
+      billing: ["billing", "invoice", "payment", "receipt", "subscription", "charge"]
+    };
+
     return (messagesQuery.data?.messages ?? []).filter((message) => {
       if (filterUnread && !message.unread) {
         return false;
+      }
+
+      if (statusFilter === "unread" && !message.unread) {
+        return false;
+      }
+
+      if (statusFilter === "flagged" && !message.flagged) {
+        return false;
+      }
+
+      if (dateRange !== "all") {
+        if (!message.date) {
+          return false;
+        }
+
+        const messageDate = new Date(message.date).getTime();
+        const ageMs = now - messageDate;
+
+        if (dateRange === "today") {
+          const startOfToday = new Date();
+          startOfToday.setHours(0, 0, 0, 0);
+          if (messageDate < startOfToday.getTime()) {
+            return false;
+          }
+        }
+
+        if (dateRange === "7d" && ageMs > 7 * 24 * 60 * 60 * 1000) {
+          return false;
+        }
+
+        if (dateRange === "30d" && ageMs > 30 * 24 * 60 * 60 * 1000) {
+          return false;
+        }
+      }
+
+      if (categoryFilter !== "all") {
+        const categoryHaystack = `${message.subject} ${message.from} ${message.preview}`.toLowerCase();
+        if (!categoryKeywords[categoryFilter].some((keyword) => categoryHaystack.includes(keyword))) {
+          return false;
+        }
       }
 
       if (!searchText) {
@@ -286,7 +344,7 @@ export function MailDashboard({
         </div>
       </header>
 
-      <div className={`grid flex-1 ${readingPane === "right" ? "xl:grid-cols-[240px_360px_minmax(0,1fr)]" : "xl:grid-cols-[240px_minmax(0,1fr)]"}`}>
+      <div className={`grid min-h-0 flex-1 ${readingPane === "right" ? "xl:grid-cols-[240px_300px_minmax(0,1fr)]" : "xl:grid-cols-[240px_minmax(0,1fr)]"}`}>
         <aside className="border-r border-surface-200 bg-[linear-gradient(180deg,#0b2141,#14345f)] p-5 text-white">
           <div className="mb-6 rounded-3xl bg-white/10 p-4 backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-100">Connected environment</p>
@@ -323,16 +381,74 @@ export function MailDashboard({
 
           <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-100">Advanced filters</p>
-            <div className="mt-4 space-y-2 text-sm text-white/80">
-              <p>Date: Today / 7d / 30d</p>
-              <p>Category: Ops / Security / Billing</p>
-              <p>Status: Unread / Flagged</p>
+            <div className="mt-4 space-y-3 text-sm text-white/80">
+              <div>
+                <p className="mb-2 text-xs uppercase tracking-[0.2em] text-brand-100">Date</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    ["all", "All"],
+                    ["today", "Today"],
+                    ["7d", "7d"],
+                    ["30d", "30d"]
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      className={`rounded-xl px-3 py-1.5 text-xs ${dateRange === value ? "bg-white text-brand-700" : "bg-white/10 text-white hover:bg-white/20"}`}
+                      type="button"
+                      onClick={() => setDateRange(value as "all" | "today" | "7d" | "30d")}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs uppercase tracking-[0.2em] text-brand-100">Category</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    ["all", "All"],
+                    ["ops", "Ops"],
+                    ["security", "Security"],
+                    ["billing", "Billing"]
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      className={`rounded-xl px-3 py-1.5 text-xs ${categoryFilter === value ? "bg-white text-brand-700" : "bg-white/10 text-white hover:bg-white/20"}`}
+                      type="button"
+                      onClick={() => setCategoryFilter(value as "all" | "ops" | "security" | "billing")}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs uppercase tracking-[0.2em] text-brand-100">Status</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    ["all", "All"],
+                    ["unread", "Unread"],
+                    ["flagged", "Flagged"]
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      className={`rounded-xl px-3 py-1.5 text-xs ${statusFilter === value ? "bg-white text-brand-700" : "bg-white/10 text-white hover:bg-white/20"}`}
+                      type="button"
+                      onClick={() => setStatusFilter(value as "all" | "unread" | "flagged")}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </aside>
 
-        <div className={`grid ${readingPane === "right" ? "grid-cols-[360px_minmax(0,1fr)] xl:col-span-2" : "grid-rows-[380px_minmax(0,1fr)] xl:col-span-1"}`}>
-          <section className="border-r border-surface-200 bg-white">
+        <div className={`grid min-h-0 ${readingPane === "right" ? "grid-cols-[300px_minmax(0,1fr)] xl:col-span-2" : "grid-rows-[330px_minmax(0,1fr)] xl:col-span-1"}`}>
+          <section className="flex min-h-0 flex-col border-r border-surface-200 bg-white">
             <div className="flex items-center justify-between border-b border-surface-200 px-5 py-4">
               <div>
                 <p className="text-sm font-semibold text-surface-900">{activeFolder}</p>
@@ -358,34 +474,38 @@ export function MailDashboard({
               </div>
             </div>
 
-            <div className="max-h-[calc(100vh-18rem)] overflow-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               {filteredMessages.map((message) => (
                 <button
                   key={message.uid}
-                  className={`flex w-full items-start gap-4 border-b border-surface-100 px-5 py-4 text-left transition hover:bg-brand-50 ${
+                  className={`flex w-full items-start gap-3 border-b border-surface-100 px-4 py-3 text-left transition hover:bg-brand-50 ${
                     selectedUid === message.uid ? "bg-brand-50" : "bg-white"
                   }`}
                   type="button"
                   onClick={() => setSelectedUid(message.uid)}
                 >
-                  <div className={`mt-1 h-2.5 w-2.5 rounded-full ${message.unread ? "bg-brand-600" : "bg-surface-200"}`} />
+                  <div className="mt-0.5 flex items-center gap-1.5">
+                    <div className={`h-2.5 w-2.5 rounded-full ${message.unread ? "bg-brand-600" : "bg-surface-200"}`} />
+                    {message.flagged ? <Star className="h-3.5 w-3.5 shrink-0 text-amber-500" /> : null}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-4">
-                      <p className="truncate text-sm font-semibold text-surface-900">{message.from}</p>
+                      <p className="truncate text-sm font-medium text-surface-800">{message.from}</p>
                       <p className="shrink-0 text-xs text-surface-500">{message.date ? new Date(message.date).toLocaleDateString() : "Now"}</p>
                     </div>
-                    <p className="mt-1 truncate text-sm text-surface-800">{message.subject}</p>
-                    <p className="mt-1 truncate text-sm text-surface-500">{message.preview}</p>
+                    <p className="mt-1 truncate text-sm font-semibold text-surface-900">{message.subject}</p>
+                    {message.preview && !["text/plain", "text/html"].includes(message.preview.toLowerCase()) ? (
+                      <p className="mt-1 truncate text-xs text-surface-500">{message.preview}</p>
+                    ) : null}
                   </div>
-                  {message.flagged ? <Star className="h-4 w-4 shrink-0 text-amber-500" /> : null}
                 </button>
               ))}
             </div>
           </section>
 
-          <section className="bg-[linear-gradient(180deg,#f7fafe,#eef4fc)] p-6">
+          <section className="min-h-0 bg-[linear-gradient(180deg,#f7fafe,#eef4fc)] p-6">
             {detail ? (
-              <article className="flex h-full flex-col bg-white/85 p-6 shadow-panel backdrop-blur">
+              <article className="flex h-full min-h-0 flex-col bg-white/85 p-6 shadow-panel backdrop-blur">
                 <div className="flex items-start justify-between gap-6 border-b border-surface-200 pb-5">
                   <div>
                     <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Message detail</p>
@@ -410,7 +530,7 @@ export function MailDashboard({
                   </div>
                 </div>
 
-                <div className="mt-6 flex-1 overflow-auto bg-surface-50 p-6 text-sm leading-7 text-surface-700">
+                <div className="mt-6 min-h-0 flex-1 overflow-y-auto bg-surface-50 p-6 text-sm leading-7 text-surface-700">
                   {detail.html ? (
                     <div dangerouslySetInnerHTML={{ __html: detail.html }} />
                   ) : (
@@ -426,6 +546,19 @@ export function MailDashboard({
           </section>
         </div>
       </div>
+
+      <footer className="border-t border-surface-200 bg-white px-6 py-3 text-xs text-surface-600">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p>
+            Copyright CITRICLOUD · <a className="font-semibold text-brand-700 hover:underline" href="https://citricloud.com" rel="noreferrer" target="_blank">citricloud.com</a>
+          </p>
+          <div className="flex flex-wrap items-center gap-4 text-surface-500">
+            <p>DEV (dev.webmail.citricloud.com): {versionsQuery.data?.dev ?? "Loading..."}</p>
+            <p>STAGING (staging.webmail.citricloud.com): {versionsQuery.data?.staging ?? "Loading..."}</p>
+            <p>PROD (webmail.citricloud.com): {versionsQuery.data?.prod ?? "Loading..."}</p>
+          </div>
+        </div>
+      </footer>
       </section>
 
       <ComposePanel
