@@ -212,6 +212,7 @@ export function MailDashboard({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: MessagePreview } | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const contentGridRef = useRef<HTMLDivElement | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   const foldersQuery = useQuery({
     queryKey: ["folders", session.token],
@@ -373,15 +374,31 @@ export function MailDashboard({
   }, []);
 
   useEffect(() => {
+    if (selectedUid === null || !messagesQuery.data?.messages) {
+      return;
+    }
+
+    const stillExists = messagesQuery.data.messages.some((message) => message.uid === selectedUid);
+    if (!stillExists) {
+      setSelectedUid(messagesQuery.data.messages[0]?.uid ?? null);
+    }
+  }, [messagesQuery.data?.messages, selectedUid]);
+
+  useEffect(() => {
     if (!contextMenu) {
       return;
     }
 
-    const handleClose = () => setContextMenu(null);
-    window.addEventListener("mousedown", handleClose);
+    const handleClose = (event: MouseEvent) => {
+      if (contextMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      setContextMenu(null);
+    };
+    window.addEventListener("click", handleClose);
 
     return () => {
-      window.removeEventListener("mousedown", handleClose);
+      window.removeEventListener("click", handleClose);
     };
   }, [contextMenu]);
 
@@ -715,6 +732,8 @@ export function MailDashboard({
                   ? null
                   : item.label === "Archive"
                     ? archiveFolderPath ?? matchingFolder?.path ?? item.fallback
+                    : item.label === "Spam"
+                      ? spamFolderPath ?? matchingFolder?.path ?? item.fallback
                     : item.label === "Starred"
                       ? "__STARRED__"
                       : matchingFolder?.path ?? item.fallback;
@@ -728,8 +747,9 @@ export function MailDashboard({
                   type="button"
                   onClick={() => {
                     if (item.label === "Labels") {
-                      setLabelsOpen(true);
-                      if (labelFolders[0]) {
+                      const nextState = !labelsOpen;
+                      setLabelsOpen(nextState);
+                      if (nextState && labelFolders[0]) {
                         setActiveFolder(labelFolders[0].path);
                         setSelectedUid(null);
                       }
@@ -870,13 +890,20 @@ export function MailDashboard({
 
             <div className="min-h-0 flex-1 overflow-y-auto hide-scrollbar">
               {filteredMessages.map((message) => (
-                <button
+                <div
                   key={message.uid}
                   className={`flex w-full items-center gap-2.5 border-b border-surface-100 px-3 py-2 text-left transition hover:bg-brand-50 ${
                     selectedUid === message.uid ? "bg-brand-50" : "bg-white"
                   }`}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedUid(message.uid)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedUid(message.uid);
+                    }
+                  }}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -890,10 +917,9 @@ export function MailDashboard({
                 >
                   <div className="flex items-center gap-1">
                     <div className={`h-2.5 w-2.5 rounded-full ${message.unread ? "bg-brand-600" : "bg-surface-200"}`} />
-                    <span
+                    <button
                       className="rounded p-0.5"
-                      role="button"
-                      tabIndex={0}
+                      type="button"
                       onClick={(event) => {
                         event.stopPropagation();
                         event.preventDefault();
@@ -908,7 +934,7 @@ export function MailDashboard({
                       }}
                     >
                       <Star className={`h-3.5 w-3.5 shrink-0 ${message.flagged ? "fill-amber-400 text-amber-500" : "text-surface-300"}`} />
-                    </span>
+                    </button>
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
@@ -920,7 +946,7 @@ export function MailDashboard({
                       {message.hasAttachments ? <Paperclip className="mt-0.5 h-3 w-3 shrink-0 text-surface-500" /> : null}
                     </div>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
 
@@ -1031,9 +1057,10 @@ export function MailDashboard({
 
       {contextMenu ? (
         <div
+          ref={contextMenuRef}
           className="fixed z-50 min-w-44 rounded-xl border border-surface-200 bg-white p-2 shadow-panel"
           style={{ left: Math.max(8, contextMenu.x), top: Math.max(8, contextMenu.y) }}
-          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
         >
           <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => moveSelectedMessage(archiveFolderPath, { folder: contextMenu.message.folder, uid: contextMenu.message.uid })}>
             Move
@@ -1050,8 +1077,11 @@ export function MailDashboard({
           <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, unread: false })}>
             Mark as Read
           </button>
-          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, flagged: !contextMenu.message.flagged })}>
-            {contextMenu.message.flagged ? "Unstar" : "Starred"}
+          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, flagged: true })}>
+            Starred
+          </button>
+          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, flagged: false })}>
+            Unstarred
           </button>
         </div>
       ) : null}
