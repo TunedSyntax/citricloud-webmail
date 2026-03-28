@@ -36,6 +36,15 @@ export type MessagePreview = {
   preview: string;
   unread: boolean;
   flagged: boolean;
+  hasAttachments: boolean;
+};
+
+export type MessageAttachment = {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  contentBase64: string;
 };
 
 export type MessageDetail = {
@@ -51,6 +60,7 @@ export type MessageDetail = {
   text: string;
   html: string | null;
   unread: boolean;
+  attachments: MessageAttachment[];
 };
 
 export type SendMessagePayload = {

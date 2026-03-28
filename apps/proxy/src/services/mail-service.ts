@@ -23,6 +23,15 @@ type MessagePreview = {
   preview: string;
   unread: boolean;
   flagged: boolean;
+  hasAttachments: boolean;
+};
+
+type MessageAttachment = {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  contentBase64: string;
 };
 
 type AddressTextLike = {
@@ -72,6 +81,30 @@ function getMailTlsOptions(host: string): TlsOptions {
     rejectUnauthorized: shouldRejectUnauthorized,
     servername: host
   };
+}
+
+function bodyStructureHasAttachments(node: unknown): boolean {
+  if (!node || typeof node !== "object") {
+    return false;
+  }
+
+  const part = node as {
+    disposition?: { type?: string };
+    parameters?: { name?: string };
+    dispositionParameters?: { filename?: string };
+    childNodes?: unknown[];
+  };
+
+  const dispositionType = part.disposition?.type?.toLowerCase();
+  if (dispositionType === "attachment") {
+    return true;
+  }
+
+  if (part.dispositionParameters?.filename || part.parameters?.name) {
+    return true;
+  }
+
+  return Array.isArray(part.childNodes) && part.childNodes.some((child) => bodyStructureHasAttachments(child));
 }
 
 export async function verifyMailAccess(session: Omit<MailSession, "token" | "createdAt">): Promise<void> {
@@ -167,7 +200,8 @@ export function listMessages(session: MailSession, folder: string, limit = 25): 
         date: toIsoString(message.internalDate),
         preview: message.bodyStructure?.childNodes?.[0]?.type ?? "Open message to view content",
         unread: !message.flags?.has("\\Seen"),
-        flagged: message.flags?.has("\\Flagged") ?? false
+        flagged: message.flags?.has("\\Flagged") ?? false,
+        hasAttachments: bodyStructureHasAttachments(message.bodyStructure)
       });
     }
 
@@ -196,6 +230,20 @@ export function getMessage(session: MailSession, folder: string, uid: number) {
     }
 
     const parsed = await simpleParser(message.source);
+    const attachments: MessageAttachment[] = parsed.attachments.map((attachment, index) => {
+      const filename = attachment.filename ?? `attachment-${index + 1}`;
+      const contentBase64 = Buffer.isBuffer(attachment.content)
+        ? attachment.content.toString("base64")
+        : Buffer.from(String(attachment.content ?? ""), "utf8").toString("base64");
+
+      return {
+        id: `${message.uid}-${index}`,
+        filename,
+        contentType: attachment.contentType || "application/octet-stream",
+        size: attachment.size,
+        contentBase64
+      };
+    });
 
     return {
       uid: message.uid,
@@ -209,7 +257,8 @@ export function getMessage(session: MailSession, folder: string, uid: number) {
       date: toIsoString(parsed.date) ?? toIsoString(message.internalDate),
       text: parsed.text ?? "",
       html: typeof parsed.html === "string" ? parsed.html : null,
-      unread: !message.flags?.has("\\Seen")
+      unread: !message.flags?.has("\\Seen"),
+      attachments
     };
   });
 }

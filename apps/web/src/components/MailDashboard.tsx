@@ -9,6 +9,7 @@ import {
   LogOut,
   PanelBottom,
   PanelRight,
+  Paperclip,
   Reply,
   Search,
   Send,
@@ -126,6 +127,43 @@ function buildMessageIframeDocument(html: string) {
   </head>
   <body>${html}</body>
 </html>`;
+}
+
+function formatAttachmentSize(bytes: number) {
+  if (!bytes || bytes < 1024) {
+    return `${bytes || 0} B`;
+  }
+
+  const kb = bytes / 1024;
+  if (kb < 1024) {
+    return `${kb.toFixed(1)} KB`;
+  }
+
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+
+function openAttachment(contentBase64: string, contentType: string, filename: string) {
+  const binary = window.atob(contentBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  const blob = new Blob([bytes], { type: contentType });
+  const url = URL.createObjectURL(blob);
+
+  if (contentType.includes("pdf")) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    return;
+  }
+
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 5_000);
 }
 
 export function MailDashboard({
@@ -670,7 +708,10 @@ export function MailDashboard({
                       <p className="truncate text-xs font-medium text-surface-700">{message.from}</p>
                       <p className="shrink-0 text-xs text-surface-500">{message.date ? new Date(message.date).toLocaleDateString() : "Now"}</p>
                     </div>
-                    <p className="mt-0.5 break-words text-sm font-semibold leading-5 text-surface-900">{message.subject}</p>
+                    <div className="mt-0.5 flex items-start gap-1.5">
+                      <p className="break-words text-sm font-semibold leading-5 text-surface-900">{message.subject}</p>
+                      {message.hasAttachments ? <Paperclip className="mt-0.5 h-3 w-3 shrink-0 text-surface-500" /> : null}
+                    </div>
                   </div>
                 </button>
               ))}
@@ -691,7 +732,7 @@ export function MailDashboard({
               <article className="flex h-full min-h-0 flex-col bg-white/85 p-6 shadow-panel backdrop-blur">
                 <div className="flex items-start justify-between gap-3 border-b border-surface-200 pb-5">
                   <div className="min-w-0 flex-1 pr-2">
-                    <h3 className="mt-1 truncate text-2xl font-semibold text-surface-900 sm:text-[1.9rem]">{detail.subject}</h3>
+                    <h3 className="mt-1 break-words text-xl font-semibold leading-tight text-surface-900 sm:text-2xl">{detail.subject}</h3>
                     <p className="mt-3 text-sm text-surface-600">From {detail.from}</p>
                     <p className="text-sm text-surface-500">To {detail.to}</p>
                     {detail.cc ? <p className="text-sm text-surface-500">Cc {detail.cc}</p> : null}
@@ -712,6 +753,30 @@ export function MailDashboard({
                 </div>
 
                 <div className="mt-6 min-h-0 flex-1 overflow-y-auto overscroll-contain bg-surface-50 p-6 text-sm leading-7 text-surface-700 hide-scrollbar">
+                  {detail.attachments.length ? (
+                    <div className="mb-4 grid gap-2">
+                      {detail.attachments.map((attachment) => {
+                        const isPdf = attachment.contentType.includes("pdf") || attachment.filename.toLowerCase().endsWith(".pdf");
+
+                        return (
+                          <div key={attachment.id} className="flex items-center justify-between rounded-xl border border-surface-200 bg-white px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-surface-800">{attachment.filename}</p>
+                              <p className="text-xs text-surface-500">{attachment.contentType} · {formatAttachmentSize(attachment.size)}</p>
+                            </div>
+                            <button
+                              className="rounded-lg border border-brand-200 px-2.5 py-1 text-xs text-brand-700 hover:bg-brand-50"
+                              type="button"
+                              onClick={() => openAttachment(attachment.contentBase64, attachment.contentType, attachment.filename)}
+                            >
+                              {isPdf ? "Open PDF" : "Download"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
                   {detail.html ? (
                     <iframe
                       className="h-full w-full border-0 bg-surface-50"
