@@ -4,12 +4,18 @@ import { z } from "zod";
 
 import { detectPresetByEmail, getPresetByKey, mailPresets } from "../config/profiles.js";
 import {
+  createFolder,
   deleteMessage,
+  deleteFolder,
   getMessage,
   listFolders,
   listMessages,
+  listStarredMessages,
+  moveMessagesBatch,
   moveMessage,
+  saveDraftMessage,
   sendMessage,
+  updateMessageFlags,
   verifyMailAccess
 } from "../services/mail-service.js";
 import { createSession, deleteSession, getSession } from "../services/session-store.js";
@@ -41,9 +47,26 @@ const moveSchema = z.object({
   uid: z.number().int().positive()
 });
 
+const moveBatchSchema = z.object({
+  items: z.array(
+    z.object({
+      folder: z.string().min(1),
+      uid: z.number().int().positive()
+    })
+  ).min(1),
+  destination: z.string().min(1)
+});
+
 const deleteSchema = z.object({
   folder: z.string().min(1),
   uid: z.number().int().positive()
+});
+
+const flagSchema = z.object({
+  folder: z.string().min(1),
+  uid: z.number().int().positive(),
+  unread: z.boolean().optional(),
+  flagged: z.boolean().optional()
 });
 
 const sendSchema = z.object({
@@ -51,6 +74,22 @@ const sendSchema = z.object({
   cc: z.array(z.string().email()).optional(),
   bcc: z.array(z.string().email()).optional(),
   subject: z.string().min(1),
+  text: z.string().optional(),
+  html: z.string().optional(),
+  inReplyTo: z.string().optional(),
+  references: z.array(z.string()).optional()
+});
+
+const folderSchema = z.object({
+  folder: z.string().min(1)
+});
+
+const saveDraftSchema = z.object({
+  folder: z.string().min(1),
+  to: z.array(z.string().email()).optional(),
+  cc: z.array(z.string().email()).optional(),
+  bcc: z.array(z.string().email()).optional(),
+  subject: z.string().optional(),
   text: z.string().optional(),
   html: z.string().optional(),
   inReplyTo: z.string().optional(),
@@ -155,6 +194,14 @@ router.get("/messages", async (request, response) => {
     const session = await getAuthenticatedSession(request);
     const folder = request.query.folder?.toString() ?? "INBOX";
     const limit = Number(request.query.limit ?? 25);
+
+     if (folder === "__STARRED__") {
+      const folders = await listFolders(session);
+      const messages = await listStarredMessages(session, folders, Number.isNaN(limit) ? 50 : limit);
+      response.json({ messages });
+      return;
+    }
+
     const messages = await listMessages(session, folder, Number.isNaN(limit) ? 25 : limit);
     response.json({ messages });
   } catch (error) {
@@ -196,12 +243,70 @@ router.post("/messages/move", async (request, response) => {
   }
 });
 
+router.post("/messages/move-batch", async (request, response) => {
+  try {
+    const session = await getAuthenticatedSession(request);
+    const payload = moveBatchSchema.parse(request.body);
+    await moveMessagesBatch(session, payload.items, payload.destination);
+    response.status(204).send();
+  } catch (error) {
+    handleRouteError(error, response);
+  }
+});
+
 router.post("/messages/delete", async (request, response) => {
   try {
     const session = await getAuthenticatedSession(request);
     const payload = deleteSchema.parse(request.body);
     await deleteMessage(session, payload.folder, payload.uid);
     response.status(204).send();
+  } catch (error) {
+    handleRouteError(error, response);
+  }
+});
+
+router.post("/messages/flags", async (request, response) => {
+  try {
+    const session = await getAuthenticatedSession(request);
+    const payload = flagSchema.parse(request.body);
+    await updateMessageFlags(session, payload.folder, payload.uid, {
+      unread: payload.unread,
+      flagged: payload.flagged
+    });
+    response.status(204).send();
+  } catch (error) {
+    handleRouteError(error, response);
+  }
+});
+
+router.post("/messages/folders/create", async (request, response) => {
+  try {
+    const session = await getAuthenticatedSession(request);
+    const payload = folderSchema.parse(request.body);
+    await createFolder(session, payload.folder);
+    response.status(201).json({ status: "created" });
+  } catch (error) {
+    handleRouteError(error, response);
+  }
+});
+
+router.post("/messages/folders/delete", async (request, response) => {
+  try {
+    const session = await getAuthenticatedSession(request);
+    const payload = folderSchema.parse(request.body);
+    await deleteFolder(session, payload.folder);
+    response.status(200).json({ status: "deleted" });
+  } catch (error) {
+    handleRouteError(error, response);
+  }
+});
+
+router.post("/messages/drafts/save", async (request, response) => {
+  try {
+    const session = await getAuthenticatedSession(request);
+    const payload = saveDraftSchema.parse(request.body);
+    await saveDraftMessage(session, payload);
+    response.status(202).json({ status: "saved" });
   } catch (error) {
     handleRouteError(error, response);
   }
