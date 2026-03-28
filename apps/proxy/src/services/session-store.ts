@@ -4,10 +4,13 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID }
 
 import { createClient } from "redis";
 
+import type { UserRole } from "../config/rbac.js";
+
 export type MailSession = {
   token: string;
   email: string;
   password: string;
+  role: UserRole;
   presetKey: string;
   imap: {
     host: string;

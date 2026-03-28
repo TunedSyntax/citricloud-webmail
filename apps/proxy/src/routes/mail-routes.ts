@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { detectPresetByEmail, getPresetByKey, mailPresets } from "../config/profiles.js";
+import { hasPermission, isDomainAllowed, resolveRole, type Permission, type UserRole } from "../config/rbac.js";
 import {
   deleteMessage,
   getMessage,
@@ -74,7 +75,24 @@ async function getAuthenticatedSession(request: Request) {
   return session;
 }
 
+class ForbiddenError extends Error {
+  constructor(message = "You do not have permission to perform this action.") {
+    super(message);
+    this.name = "ForbiddenError";
+  }
+}
+
+function requirePermission(role: UserRole, permission: Permission): void {
+  if (!hasPermission(role, permission)) {
+    throw new ForbiddenError();
+  }
+}
+
 function handleRouteError(error: unknown, response: Response) {
+  if (error instanceof ForbiddenError) {
+    return response.status(403).json({ error: error.message });
+  }
+
   const message = error instanceof Error ? error.message : "Unexpected server error.";
   return response.status(400).json({ error: message });
 }
@@ -103,10 +121,17 @@ router.post("/setup/detect", (request, response) => {
 router.post("/session/login", async (request, response) => {
   try {
     const payload = loginSchema.parse(request.body);
+
+    if (!isDomainAllowed(payload.email)) {
+      return response.status(403).json({ error: "Your email domain is not permitted to access this service." });
+    }
+
     const detectedPreset = payload.presetKey ? getPresetByKey(payload.presetKey) : detectPresetByEmail(payload.email);
+    const role = resolveRole(payload.email);
     const loginCandidate = {
       email: payload.email,
       password: payload.password,
+      role,
       presetKey: detectedPreset.key,
       imap: payload.imap ?? detectedPreset.imap,
       smtp: payload.smtp ?? detectedPreset.smtp
@@ -120,6 +145,7 @@ router.post("/session/login", async (request, response) => {
       session: {
         token: session.token,
         email: session.email,
+        role: session.role,
         presetKey: session.presetKey,
         createdAt: session.createdAt
       },
@@ -199,6 +225,7 @@ router.post("/messages/move", async (request, response) => {
 router.post("/messages/delete", async (request, response) => {
   try {
     const session = await getAuthenticatedSession(request);
+    requirePermission(session.role, "messages:delete");
     const payload = deleteSchema.parse(request.body);
     await deleteMessage(session, payload.folder, payload.uid);
     response.status(204).send();

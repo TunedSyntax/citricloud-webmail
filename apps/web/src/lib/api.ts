@@ -18,6 +18,7 @@ export type ConnectionProfile = {
 export type AuthSession = {
   token: string;
   email: string;
+  role: "admin" | "user";
   presetKey: string;
   createdAt: string;
 };

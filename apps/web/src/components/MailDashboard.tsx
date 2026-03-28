@@ -62,6 +62,16 @@ function buildReplyBody(detail: MessageDetail): string {
   return `\n\nOn ${timestamp}, ${detail.from} wrote:\n${quotedBody}`;
 }
 
+function RoleBadge({ role, variant }: { role: AuthSession["role"]; variant: "dark" | "light" }) {
+  const darkStyles = role === "admin" ? "bg-amber-400/20 text-amber-200" : "bg-white/10 text-white/60";
+  const lightStyles = role === "admin" ? "bg-amber-100 text-amber-700" : "bg-surface-100 text-surface-500";
+  return (
+    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wider ${variant === "dark" ? darkStyles : lightStyles}`}>
+      {role}
+    </span>
+  );
+}
+
 export function MailDashboard({
   session,
   initialFolders,
@@ -231,6 +241,7 @@ export function MailDashboard({
                 <div className="border-b border-surface-200 px-3 pb-3">
                   <p className="text-sm font-semibold text-surface-900">{session.email}</p>
                   <p className="text-xs text-surface-500">Current session · {session.presetKey}</p>
+                  <RoleBadge role={session.role} variant="light" />
                 </div>
 
                 <div className="px-3 py-3">
@@ -292,6 +303,7 @@ export function MailDashboard({
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-100">Connected environment</p>
             <p className="mt-3 text-lg font-semibold">{session.presetKey}</p>
             <p className="text-sm text-brand-100">{session.email}</p>
+            <RoleBadge role={session.role} variant="dark" />
           </div>
 
           <nav className="space-y-2">
@@ -339,14 +351,16 @@ export function MailDashboard({
                 <p className="text-xs text-surface-500">{filteredMessages.length} messages</p>
               </div>
               <div className="flex gap-2">
-                <button
-                  className="rounded-xl border border-surface-200 px-3 py-2 text-sm text-surface-700"
-                  disabled={selectedUid === null || deleteMutation.isPending}
-                  type="button"
-                  onClick={() => selectedUid !== null && deleteMutation.mutate(selectedUid)}
-                >
-                  Delete
-                </button>
+                {session.role === "admin" ? (
+                  <button
+                    className="rounded-xl border border-surface-200 px-3 py-2 text-sm text-surface-700"
+                    disabled={selectedUid === null || deleteMutation.isPending}
+                    type="button"
+                    onClick={() => selectedUid !== null && deleteMutation.mutate(selectedUid)}
+                  >
+                    Delete
+                  </button>
+                ) : null}
                 <button
                   className="rounded-xl border border-surface-200 px-3 py-2 text-sm text-surface-700"
                   disabled={selectedUid === null || moveMutation.isPending}
