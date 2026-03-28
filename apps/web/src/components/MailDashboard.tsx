@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  Archive,
   Check,
   CirclePlus,
   ChevronDown,
@@ -57,7 +58,7 @@ const sidebarItems = [
   { label: "Drafts", icon: LayoutPanelTop, fallback: "Drafts" },
   { label: "Trash", icon: Trash2, fallback: "Trash" },
   { label: "Spam", icon: ShieldAlert, fallback: "Junk" },
-  { label: "Archive", icon: Tags, fallback: "Archive" },
+  { label: "Archive", icon: Archive, fallback: "Archive" },
   { label: "Labels", icon: Tags, fallback: "Archive" }
 ];
 
@@ -377,12 +378,10 @@ export function MailDashboard({
     }
 
     const handleClose = () => setContextMenu(null);
-    window.addEventListener("click", handleClose);
-    window.addEventListener("contextmenu", handleClose);
+    window.addEventListener("mousedown", handleClose);
 
     return () => {
-      window.removeEventListener("click", handleClose);
-      window.removeEventListener("contextmenu", handleClose);
+      window.removeEventListener("mousedown", handleClose);
     };
   }, [contextMenu]);
 
@@ -463,6 +462,32 @@ export function MailDashboard({
   const archiveFolderPath = resolveFolderPath(availableFolders, ["archive", "all mail"]);
   const spamFolderPath = resolveFolderPath(availableFolders, ["junk", "spam"]);
   const trashFolderPath = resolveFolderPath(availableFolders, ["trash", "deleted"]);
+
+  const activeSidebarLabel = useMemo(() => {
+    if (activeFolder === "__STARRED__") {
+      return "Starred";
+    }
+
+    if (archiveFolderPath && activeFolder === archiveFolderPath) {
+      return "Archive";
+    }
+
+    if (labelFolders.some((folder) => folder.path === activeFolder)) {
+      return "Labels";
+    }
+
+    const matched = sidebarItems.find((item) => item.fallback !== "__STARRED__" && activeFolder.toLowerCase().includes(item.fallback.toLowerCase()));
+    return matched?.label ?? "Inbox";
+  }, [activeFolder, archiveFolderPath, labelFolders]);
+
+  const activeFolderTitle = useMemo(() => {
+    if (activeFolder === "__STARRED__") {
+      return "Starred";
+    }
+
+    const matched = availableFolders.find((folder) => folder.path === activeFolder);
+    return matched?.name ?? activeFolder;
+  }, [activeFolder, availableFolders]);
 
   const openNewComposer = () => {
     setComposerDraft({
@@ -698,17 +723,22 @@ export function MailDashboard({
                 <button
                   key={item.label}
                   className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm transition ${
-                    (item.label === "Labels" ? labelsOpen : activeFolder === targetFolder) ? "bg-white text-brand-700" : "bg-white/5 text-white/80 hover:bg-white/10"
+                    activeSidebarLabel === item.label ? "bg-white text-brand-700" : "bg-white/5 text-white/80 hover:bg-white/10"
                   }`}
                   type="button"
                   onClick={() => {
                     if (item.label === "Labels") {
-                      setLabelsOpen((current) => !current);
+                      setLabelsOpen(true);
+                      if (labelFolders[0]) {
+                        setActiveFolder(labelFolders[0].path);
+                        setSelectedUid(null);
+                      }
                       return;
                     }
                     if (targetFolder) {
                       setActiveFolder(targetFolder);
                     }
+                    setLabelsOpen(false);
                     setSelectedUid(null);
                   }}
                 >
@@ -730,6 +760,7 @@ export function MailDashboard({
                     type="button"
                     onClick={() => {
                       setActiveFolder(folder.path);
+                      setLabelsOpen(true);
                       setSelectedUid(null);
                     }}
                   >
@@ -764,7 +795,7 @@ export function MailDashboard({
           <section className="relative flex min-h-0 flex-col border-r border-surface-200 bg-white">
             <div className="flex items-center justify-between border-b border-surface-200 px-5 py-4">
               <div>
-                <p className="text-sm font-semibold text-surface-900">{activeFolder}</p>
+                <p className="text-sm font-semibold text-surface-900">{activeFolderTitle}</p>
                 <p className="text-xs text-surface-500">{filteredMessages.length} messages</p>
               </div>
               <div className="flex gap-2">
@@ -848,6 +879,7 @@ export function MailDashboard({
                   onClick={() => setSelectedUid(message.uid)}
                   onContextMenu={(event) => {
                     event.preventDefault();
+                    event.stopPropagation();
                     setSelectedUid(message.uid);
                     setContextMenu({
                       x: event.clientX,
@@ -864,6 +896,7 @@ export function MailDashboard({
                       tabIndex={0}
                       onClick={(event) => {
                         event.stopPropagation();
+                        event.preventDefault();
                         updateMessageState({ folder: message.folder, uid: message.uid, flagged: !message.flagged });
                       }}
                       onKeyDown={(event) => {
@@ -999,7 +1032,8 @@ export function MailDashboard({
       {contextMenu ? (
         <div
           className="fixed z-50 min-w-44 rounded-xl border border-surface-200 bg-white p-2 shadow-panel"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
+          style={{ left: Math.max(8, contextMenu.x), top: Math.max(8, contextMenu.y) }}
+          onMouseDown={(event) => event.stopPropagation()}
         >
           <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => moveSelectedMessage(archiveFolderPath, { folder: contextMenu.message.folder, uid: contextMenu.message.uid })}>
             Move

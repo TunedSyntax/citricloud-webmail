@@ -77,7 +77,7 @@ export function ComposePanel({ draft, errorMessage, isSending, onClose, onSend }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-900/30 p-4 backdrop-blur-sm">
-      <section className="flex h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.98))] shadow-[0_30px_80px_rgba(11,33,65,0.24)] sm:h-[84vh]">
+      <section className="hide-scrollbar flex h-[92vh] w-full max-w-3xl flex-col overflow-y-auto rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.98))] shadow-[0_30px_80px_rgba(11,33,65,0.24)] sm:h-[84vh]">
         <header className="flex shrink-0 items-center justify-between border-b border-surface-200 px-6 py-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-700">
