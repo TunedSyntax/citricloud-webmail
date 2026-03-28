@@ -312,24 +312,6 @@ export function MailDashboard({
     if (typeof window === "undefined") {
       return;
     }
-
-    window.localStorage.setItem(sidebarWidthStorageKey, String(sidebarWidth));
-  }, [sidebarWidth]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.localStorage.setItem(listWidthStorageKey, String(listWidth));
-  }, [listWidth]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.localStorage.setItem(bottomPaneHeightStorageKey, String(bottomPaneHeight));
   }, [bottomPaneHeight]);
 
   useEffect(() => {
@@ -766,16 +748,30 @@ export function MailDashboard({
               const matchingFolder = availableFolders.find((folder) =>
                 folder.path.toLowerCase().includes(item.fallback.toLowerCase()) || folder.name.toLowerCase() === item.label.toLowerCase()
               );
+              const specialUseFolder =
+                item.label === "Inbox"
+                  ? availableFolders.find((folder) => folder.specialUse === "\\Inbox")
+                  : item.label === "Sent"
+                    ? availableFolders.find((folder) => folder.specialUse === "\\Sent")
+                    : item.label === "Drafts"
+                      ? availableFolders.find((folder) => folder.specialUse === "\\Drafts")
+                      : item.label === "Trash"
+                        ? availableFolders.find((folder) => folder.specialUse === "\\Trash")
+                        : item.label === "Spam"
+                          ? availableFolders.find((folder) => folder.specialUse === "\\Junk")
+                          : item.label === "Archive"
+                            ? availableFolders.find((folder) => folder.specialUse === "\\Archive" || folder.specialUse === "\\All")
+                            : null;
               const targetFolder =
                 item.label === "Labels"
                   ? null
                   : item.label === "Archive"
-                    ? archiveFolderPath ?? matchingFolder?.path ?? item.fallback
+                    ? archiveFolderPath ?? specialUseFolder?.path ?? matchingFolder?.path ?? item.fallback
                     : item.label === "Spam"
-                      ? spamFolderPath ?? matchingFolder?.path ?? item.fallback
+                      ? spamFolderPath ?? specialUseFolder?.path ?? matchingFolder?.path ?? item.fallback
                     : item.label === "Starred"
                       ? "__STARRED__"
-                      : matchingFolder?.path ?? item.fallback;
+                      : specialUseFolder?.path ?? matchingFolder?.path ?? item.fallback;
 
               return (
                 <button
@@ -788,11 +784,6 @@ export function MailDashboard({
                     if (item.label === "Labels") {
                       const nextState = !labelsOpen;
                       setLabelsOpen(nextState);
-                      if (nextState && labelFolders[0] && !labelFolders.some((folder) => folder.path === activeFolder)) {
-                        setActiveFolder(labelFolders[0].path);
-                        setSelectedUid(null);
-                        setSelectedMessageSourceFolder(null);
-                      }
                       return;
                     }
                     if (targetFolder) {
@@ -1103,35 +1094,87 @@ export function MailDashboard({
       </section>
 
       {contextMenu ? (
-        <div
-          ref={contextMenuRef}
-          className="fixed z-50 min-w-44 rounded-xl border border-surface-200 bg-white p-2 shadow-panel"
-          style={{ left: Math.max(8, contextMenu.x), top: Math.max(8, contextMenu.y) }}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => moveSelectedMessage(archiveFolderPath, { folder: contextMenu.message.folder, uid: contextMenu.message.uid })}>
-            Move
-          </button>
-          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => deleteSelectedMessage({ folder: contextMenu.message.folder, uid: contextMenu.message.uid })}>
-            Remove
-          </button>
-          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50 disabled:opacity-50" disabled={!spamFolderPath} type="button" onClick={() => moveSelectedMessage(spamFolderPath, { folder: contextMenu.message.folder, uid: contextMenu.message.uid })}>
-            Send to Spam
-          </button>
-          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, unread: true })}>
-            Mark as Unread
-          </button>
-          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, unread: false })}>
-            Mark as Read
-          </button>
-          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, flagged: true })}>
-            Starred
-          </button>
-          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, flagged: false })}>
-            Unstarred
-          </button>
-        </div>
+        <>
+          <div className="fixed inset-0 z-40" onMouseDown={() => setContextMenu(null)} />
+          <div
+            ref={contextMenuRef}
+            className="fixed z-50 min-w-44 rounded-xl border border-surface-200 bg-white p-2 shadow-panel"
+            style={{ left: Math.max(8, contextMenu.x), top: Math.max(8, contextMenu.y) }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                moveSelectedMessage(archiveFolderPath, { folder: contextMenu.message.folder, uid: contextMenu.message.uid });
+              }}
+            >
+              Move
+            </button>
+            <button
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                deleteSelectedMessage({ folder: contextMenu.message.folder, uid: contextMenu.message.uid });
+              }}
+            >
+              Remove
+            </button>
+            <button
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50 disabled:opacity-50"
+              disabled={!spamFolderPath}
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                moveSelectedMessage(spamFolderPath, { folder: contextMenu.message.folder, uid: contextMenu.message.uid });
+              }}
+            >
+              Send to Spam
+            </button>
+            <button
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, unread: true });
+              }}
+            >
+              Mark as Unread
+            </button>
+            <button
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, unread: false });
+              }}
+            >
+              Mark as Read
+            </button>
+            <button
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, flagged: true });
+              }}
+            >
+              Starred
+            </button>
+            <button
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, flagged: false });
+              }}
+            >
+              Unstarred
+            </button>
+          </div>
+        </>
       ) : null}
 
       <ComposePanel

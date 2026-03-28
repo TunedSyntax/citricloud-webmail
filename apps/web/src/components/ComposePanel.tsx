@@ -76,9 +76,9 @@ export function ComposePanel({ draft, errorMessage, isSending, onClose, onSend }
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-surface-900/30 p-4 backdrop-blur-sm">
-      <div className="hide-scrollbar flex h-full w-full items-center justify-center overflow-y-auto">
-      <section className="hide-scrollbar mx-auto flex h-[92vh] w-full max-w-3xl min-h-[560px] max-h-full flex-col overflow-hidden rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.98))] shadow-[0_30px_80px_rgba(11,33,65,0.24)] sm:h-[84vh]">
+    <div className="fixed inset-0 z-50 hide-scrollbar overflow-y-auto bg-surface-900/30 p-4 backdrop-blur-sm">
+      <div className="mx-auto flex min-h-full w-full items-start justify-center py-2 sm:py-4">
+      <section className="hide-scrollbar flex h-[92vh] w-full max-w-3xl min-h-[560px] max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.98))] shadow-[0_30px_80px_rgba(11,33,65,0.24)] sm:h-[84vh]">
         <header className="flex shrink-0 items-center justify-between border-b border-surface-200 px-6 py-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-700">
