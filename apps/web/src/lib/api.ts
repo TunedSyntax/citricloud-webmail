@@ -30,6 +30,7 @@ export type MailFolder = {
 
 export type MessagePreview = {
   uid: number;
+  folder: string;
   subject: string;
   from: string;
   date: string | null;
@@ -175,6 +176,16 @@ export function moveMessage(token: string, folder: string, uid: number, destinat
       Authorization: `Bearer ${token}`
     },
     body: JSON.stringify({ folder, uid, destination })
+  });
+}
+
+export function updateMessageFlags(token: string, payload: { folder: string; uid: number; unread?: boolean; flagged?: boolean }) {
+  return request<void>("/api/messages/flags", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
   });
 }
 

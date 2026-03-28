@@ -17,6 +17,7 @@ type TlsOptions = {
 
 type MessagePreview = {
   uid: number;
+  folder: string;
   subject: string;
   from: string;
   date: string | null;
@@ -39,6 +40,20 @@ type AddressTextLike = {
   value?: Array<{
     address?: string | null;
   }>;
+};
+
+type FetchedPreviewMessage = {
+  uid: number;
+  envelope?: {
+    subject?: string;
+    from?: Array<{
+      name?: string | null;
+      address?: string | null;
+    }>;
+  };
+  flags?: Set<string>;
+  internalDate?: Date | string | null;
+  bodyStructure?: unknown;
 };
 
 function toIsoString(value: Date | string | null | undefined): string | null {
@@ -107,6 +122,47 @@ function bodyStructureHasAttachments(node: unknown): boolean {
   return Array.isArray(part.childNodes) && part.childNodes.some((child) => bodyStructureHasAttachments(child));
 }
 
+function toPreview(folder: string, message: FetchedPreviewMessage): MessagePreview {
+  return {
+    uid: message.uid,
+    folder,
+    subject: message.envelope?.subject ?? "(no subject)",
+    from: message.envelope?.from?.[0]
+      ? `${message.envelope.from[0].name ?? ""} <${message.envelope.from[0].address ?? "unknown"}>`.trim()
+      : "Unknown sender",
+    date: toIsoString(message.internalDate),
+    preview: (message.bodyStructure as { childNodes?: Array<{ type?: string }> } | undefined)?.childNodes?.[0]?.type ?? "Open message to view content",
+    unread: !message.flags?.has("\\Seen"),
+    flagged: message.flags?.has("\\Flagged") ?? false,
+    hasAttachments: bodyStructureHasAttachments(message.bodyStructure)
+  };
+}
+
+async function fetchFolderMessages(client: ImapFlow, folder: string, limit = 25): Promise<MessagePreview[]> {
+  const mailbox = await client.mailboxOpen(folder);
+
+  if (mailbox.exists === 0) {
+    return [];
+  }
+
+  const start = Math.max(1, mailbox.exists - limit + 1);
+  const range = `${start}:*`;
+  const messages: MessagePreview[] = [];
+
+  for await (const message of client.fetch(range, {
+    uid: true,
+    envelope: true,
+    flags: true,
+    internalDate: true,
+    bodyStructure: true,
+    source: false
+  })) {
+    messages.push(toPreview(folder, message as FetchedPreviewMessage));
+  }
+
+  return messages.reverse();
+}
+
 export async function verifyMailAccess(session: Omit<MailSession, "token" | "createdAt">): Promise<void> {
   const imapClient = new ImapFlow({
     host: session.imap.host,
@@ -172,40 +228,22 @@ export function listFolders(session: MailSession): Promise<FolderInfo[]> {
 }
 
 export function listMessages(session: MailSession, folder: string, limit = 25): Promise<MessagePreview[]> {
+  return withImapClient(session, async (client) => fetchFolderMessages(client, folder, limit));
+}
+
+export function listStarredMessages(session: MailSession, folders: FolderInfo[], limitPerFolder = 100): Promise<MessagePreview[]> {
   return withImapClient(session, async (client) => {
-    const mailbox = await client.mailboxOpen(folder);
+    const sourceFolders = folders.filter((folder) => folder.specialUse !== "\\Trash" && folder.specialUse !== "\\Junk");
+    const results = await Promise.all(
+      sourceFolders.map(async (folder) => {
+        const messages = await fetchFolderMessages(client, folder.path, limitPerFolder);
+        return messages.filter((message) => message.flagged);
+      })
+    );
 
-    if (mailbox.exists === 0) {
-      return [];
-    }
-
-    const start = Math.max(1, mailbox.exists - limit + 1);
-    const range = `${start}:*`;
-    const messages: MessagePreview[] = [];
-
-    for await (const message of client.fetch(range, {
-      uid: true,
-      envelope: true,
-      flags: true,
-      internalDate: true,
-      bodyStructure: true,
-      source: false
-    })) {
-      messages.push({
-        uid: message.uid,
-        subject: message.envelope?.subject ?? "(no subject)",
-        from: message.envelope?.from?.[0]
-          ? `${message.envelope.from[0].name ?? ""} <${message.envelope.from[0].address ?? "unknown"}>`.trim()
-          : "Unknown sender",
-        date: toIsoString(message.internalDate),
-        preview: message.bodyStructure?.childNodes?.[0]?.type ?? "Open message to view content",
-        unread: !message.flags?.has("\\Seen"),
-        flagged: message.flags?.has("\\Flagged") ?? false,
-        hasAttachments: bodyStructureHasAttachments(message.bodyStructure)
-      });
-    }
-
-    return messages.reverse();
+    return results
+      .flat()
+      .sort((left, right) => Date.parse(right.date ?? "1970-01-01") - Date.parse(left.date ?? "1970-01-01"));
   });
 }
 
@@ -274,6 +312,33 @@ export function moveMessage(session: MailSession, folder: string, uid: number, d
   return withImapClient(session, async (client) => {
     await client.mailboxOpen(folder);
     await client.messageMove(uid, destination, { uid: true });
+  });
+}
+
+export function updateMessageFlags(
+  session: MailSession,
+  folder: string,
+  uid: number,
+  options: { unread?: boolean; flagged?: boolean }
+): Promise<void> {
+  return withImapClient(session, async (client) => {
+    await client.mailboxOpen(folder);
+
+    if (typeof options.unread === "boolean") {
+      if (options.unread) {
+        await client.messageFlagsRemove(uid, ["\\Seen"], { uid: true });
+      } else {
+        await client.messageFlagsAdd(uid, ["\\Seen"], { uid: true });
+      }
+    }
+
+    if (typeof options.flagged === "boolean") {
+      if (options.flagged) {
+        await client.messageFlagsAdd(uid, ["\\Flagged"], { uid: true });
+      } else {
+        await client.messageFlagsRemove(uid, ["\\Flagged"], { uid: true });
+      }
+    }
   });
 }
 

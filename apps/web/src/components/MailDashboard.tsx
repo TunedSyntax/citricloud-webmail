@@ -29,10 +29,12 @@ import {
   logout as logoutRequest,
   moveMessage as moveMessageRequest,
   sendMessage as sendMessageRequest,
+  updateMessageFlags as updateMessageFlagsRequest,
   type AuthSession,
   type EnvironmentVersions,
   type MailFolder,
   type MessageDetail,
+  type MessagePreview,
   type SendMessagePayload
 } from "../lib/api";
 import type { SavedAccount } from "../App";
@@ -50,10 +52,12 @@ type MailDashboardProps = {
 
 const sidebarItems = [
   { label: "Inbox", icon: Inbox, fallback: "INBOX" },
+  { label: "Starred", icon: Star, fallback: "__STARRED__" },
   { label: "Sent", icon: Send, fallback: "Sent" },
   { label: "Drafts", icon: LayoutPanelTop, fallback: "Drafts" },
   { label: "Trash", icon: Trash2, fallback: "Trash" },
   { label: "Spam", icon: ShieldAlert, fallback: "Junk" },
+  { label: "Archive", icon: Tags, fallback: "Archive" },
   { label: "Labels", icon: Tags, fallback: "Archive" }
 ];
 
@@ -167,6 +171,17 @@ function openAttachment(contentBase64: string, contentType: string, filename: st
   window.setTimeout(() => URL.revokeObjectURL(url), 5_000);
 }
 
+function resolveFolderPath(folders: MailFolder[], candidates: string[]) {
+  const normalizedCandidates = candidates.map((candidate) => candidate.toLowerCase());
+  const exactMatch = folders.find((folder) => normalizedCandidates.includes(folder.path.toLowerCase()) || normalizedCandidates.includes(folder.name.toLowerCase()));
+  if (exactMatch) {
+    return exactMatch.path;
+  }
+
+  const includesMatch = folders.find((folder) => normalizedCandidates.some((candidate) => folder.path.toLowerCase().includes(candidate) || folder.name.toLowerCase().includes(candidate)));
+  return includesMatch?.path ?? null;
+}
+
 export function MailDashboard({
   session,
   initialFolders,
@@ -193,6 +208,7 @@ export function MailDashboard({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [composerDraft, setComposerDraft] = useState<ComposeDraft | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: MessagePreview } | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const contentGridRef = useRef<HTMLDivElement | null>(null);
 
@@ -207,9 +223,13 @@ export function MailDashboard({
     queryFn: () => getMessages(session.token, activeFolder)
   });
 
+  const availableFolders = foldersQuery.data?.folders ?? initialFolders;
+  const selectedPreview = (messagesQuery.data?.messages ?? []).find((message) => message.uid === selectedUid) ?? null;
+  const selectedMessageFolder = selectedPreview?.folder ?? activeFolder;
+
   const selectedMessageQuery = useQuery({
-    queryKey: ["message", session.token, activeFolder, selectedUid],
-    queryFn: () => getMessage(session.token, activeFolder, selectedUid as number),
+    queryKey: ["message", session.token, selectedMessageFolder, selectedUid],
+    queryFn: () => getMessage(session.token, selectedMessageFolder, selectedUid as number),
     enabled: selectedUid !== null
   });
 
@@ -220,7 +240,7 @@ export function MailDashboard({
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (uid: number) => deleteMessageRequest(session.token, activeFolder, uid),
+    mutationFn: ({ folder, uid }: { folder: string; uid: number }) => deleteMessageRequest(session.token, folder, uid),
     onSuccess: () => {
       messagesQuery.refetch();
       setSelectedUid(null);
@@ -228,10 +248,20 @@ export function MailDashboard({
   });
 
   const moveMutation = useMutation({
-    mutationFn: (uid: number) => moveMessageRequest(session.token, activeFolder, uid, "Archive"),
+    mutationFn: ({ folder, uid, destination }: { folder: string; uid: number; destination: string }) =>
+      moveMessageRequest(session.token, folder, uid, destination),
     onSuccess: () => {
       messagesQuery.refetch();
       setSelectedUid(null);
+    }
+  });
+
+  const updateFlagsMutation = useMutation({
+    mutationFn: (payload: { folder: string; uid: number; unread?: boolean; flagged?: boolean }) =>
+      updateMessageFlagsRequest(session.token, payload),
+    onSuccess: () => {
+      messagesQuery.refetch();
+      selectedMessageQuery.refetch();
     }
   });
 
@@ -341,15 +371,30 @@ export function MailDashboard({
     };
   }, []);
 
-  const labelFolders = useMemo(() => {
-    const systemFolderNames = ["inbox", "sent", "draft", "trash", "junk", "spam", "archive"];
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
 
-    return (foldersQuery.data?.folders ?? []).filter((folder) => {
+    const handleClose = () => setContextMenu(null);
+    window.addEventListener("click", handleClose);
+    window.addEventListener("contextmenu", handleClose);
+
+    return () => {
+      window.removeEventListener("click", handleClose);
+      window.removeEventListener("contextmenu", handleClose);
+    };
+  }, [contextMenu]);
+
+  const labelFolders = useMemo(() => {
+    const systemFolderNames = ["inbox", "sent", "draft", "trash", "junk", "spam", "archive", "starred"];
+
+    return availableFolders.filter((folder) => {
       const lower = folder.name.toLowerCase();
       const hasSystemName = systemFolderNames.some((name) => lower.includes(name));
-      return !hasSystemName;
+      return !hasSystemName && !folder.specialUse;
     });
-  }, [foldersQuery.data?.folders]);
+  }, [availableFolders]);
 
   const filteredMessages = useMemo(() => {
     const now = Date.now();
@@ -415,6 +460,9 @@ export function MailDashboard({
 
   const detail = selectedMessageQuery.data?.message;
   const switchableAccounts = savedAccounts.filter((account) => account.session.token !== session.token);
+  const archiveFolderPath = resolveFolderPath(availableFolders, ["archive", "all mail"]);
+  const spamFolderPath = resolveFolderPath(availableFolders, ["junk", "spam"]);
+  const trashFolderPath = resolveFolderPath(availableFolders, ["trash", "deleted"]);
 
   const openNewComposer = () => {
     setComposerDraft({
@@ -442,6 +490,44 @@ export function MailDashboard({
       inReplyTo: detail.messageId,
       references: detail.references
     });
+  };
+
+  const moveSelectedMessage = (destination: string | null, override?: { folder: string; uid: number }) => {
+    const targetUid = override?.uid ?? selectedUid;
+    const sourceFolder = override?.folder ?? selectedMessageFolder;
+
+    if (!targetUid || !destination) {
+      return;
+    }
+
+    moveMutation.mutate({
+      folder: sourceFolder,
+      uid: targetUid,
+      destination
+    });
+    setContextMenu(null);
+  };
+
+  const deleteSelectedMessage = (override?: { folder: string; uid: number }) => {
+    const targetUid = override?.uid ?? selectedUid;
+    const sourceFolder = override?.folder ?? selectedMessageFolder;
+
+    if (!targetUid) {
+      return;
+    }
+
+    if (trashFolderPath && sourceFolder !== trashFolderPath) {
+      moveSelectedMessage(trashFolderPath, { folder: sourceFolder, uid: targetUid });
+      return;
+    }
+
+    deleteMutation.mutate({ folder: sourceFolder, uid: targetUid });
+    setContextMenu(null);
+  };
+
+  const updateMessageState = (payload: { folder: string; uid: number; unread?: boolean; flagged?: boolean }) => {
+    updateFlagsMutation.mutate(payload);
+    setContextMenu(null);
   };
 
   const isRightPane = readingPane === "right";
@@ -596,23 +682,33 @@ export function MailDashboard({
           <nav className="space-y-2">
             {sidebarItems.map((item) => {
               const LucideIcon = item.icon;
-              const matchingFolder = foldersQuery.data?.folders.find((folder) =>
+              const matchingFolder = availableFolders.find((folder) =>
                 folder.path.toLowerCase().includes(item.fallback.toLowerCase()) || folder.name.toLowerCase() === item.label.toLowerCase()
               );
-              const targetFolder = item.label === "Labels" ? labelFolders[0]?.path ?? item.fallback : matchingFolder?.path ?? item.fallback;
+              const targetFolder =
+                item.label === "Labels"
+                  ? null
+                  : item.label === "Archive"
+                    ? archiveFolderPath ?? matchingFolder?.path ?? item.fallback
+                    : item.label === "Starred"
+                      ? "__STARRED__"
+                      : matchingFolder?.path ?? item.fallback;
 
               return (
                 <button
                   key={item.label}
                   className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm transition ${
-                    activeFolder === targetFolder ? "bg-white text-brand-700" : "bg-white/5 text-white/80 hover:bg-white/10"
+                    (item.label === "Labels" ? labelsOpen : activeFolder === targetFolder) ? "bg-white text-brand-700" : "bg-white/5 text-white/80 hover:bg-white/10"
                   }`}
                   type="button"
                   onClick={() => {
                     if (item.label === "Labels") {
                       setLabelsOpen((current) => !current);
+                      return;
                     }
-                    setActiveFolder(targetFolder);
+                    if (targetFolder) {
+                      setActiveFolder(targetFolder);
+                    }
                     setSelectedUid(null);
                   }}
                 >
@@ -683,15 +779,15 @@ export function MailDashboard({
                   className="rounded-xl border border-brand-200 px-3 py-2 text-sm text-brand-700 hover:bg-brand-50"
                   disabled={selectedUid === null || deleteMutation.isPending}
                   type="button"
-                  onClick={() => selectedUid !== null && deleteMutation.mutate(selectedUid)}
+                  onClick={() => deleteSelectedMessage()}
                 >
                   Delete
                 </button>
                 <button
                   className="rounded-xl border border-brand-200 px-3 py-2 text-sm text-brand-700 hover:bg-brand-50"
-                  disabled={selectedUid === null || moveMutation.isPending}
+                  disabled={selectedUid === null || moveMutation.isPending || !archiveFolderPath}
                   type="button"
-                  onClick={() => selectedUid !== null && moveMutation.mutate(selectedUid)}
+                  onClick={() => moveSelectedMessage(archiveFolderPath)}
                 >
                   Move
                 </button>
@@ -750,10 +846,36 @@ export function MailDashboard({
                   }`}
                   type="button"
                   onClick={() => setSelectedUid(message.uid)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setSelectedUid(message.uid);
+                    setContextMenu({
+                      x: event.clientX,
+                      y: event.clientY,
+                      message
+                    });
+                  }}
                 >
                   <div className="flex items-center gap-1">
                     <div className={`h-2.5 w-2.5 rounded-full ${message.unread ? "bg-brand-600" : "bg-surface-200"}`} />
-                    {message.flagged ? <Star className="h-3.5 w-3.5 shrink-0 text-amber-500" /> : null}
+                    <span
+                      className="rounded p-0.5"
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        updateMessageState({ folder: message.folder, uid: message.uid, flagged: !message.flagged });
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          updateMessageState({ folder: message.folder, uid: message.uid, flagged: !message.flagged });
+                        }
+                      }}
+                    >
+                      <Star className={`h-3.5 w-3.5 shrink-0 ${message.flagged ? "fill-amber-400 text-amber-500" : "text-surface-300"}`} />
+                    </span>
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
@@ -873,6 +995,32 @@ export function MailDashboard({
         </div>
       </footer>
       </section>
+
+      {contextMenu ? (
+        <div
+          className="fixed z-50 min-w-44 rounded-xl border border-surface-200 bg-white p-2 shadow-panel"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => moveSelectedMessage(archiveFolderPath, { folder: contextMenu.message.folder, uid: contextMenu.message.uid })}>
+            Move
+          </button>
+          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => deleteSelectedMessage({ folder: contextMenu.message.folder, uid: contextMenu.message.uid })}>
+            Remove
+          </button>
+          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50 disabled:opacity-50" disabled={!spamFolderPath} type="button" onClick={() => moveSelectedMessage(spamFolderPath, { folder: contextMenu.message.folder, uid: contextMenu.message.uid })}>
+            Send to Spam
+          </button>
+          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, unread: true })}>
+            Mark as Unread
+          </button>
+          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, unread: false })}>
+            Mark as Read
+          </button>
+          <button className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50" type="button" onClick={() => updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, flagged: !contextMenu.message.flagged })}>
+            {contextMenu.message.flagged ? "Unstar" : "Starred"}
+          </button>
+        </div>
+      ) : null}
 
       <ComposePanel
         draft={composerDraft}

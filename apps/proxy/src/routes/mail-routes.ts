@@ -8,8 +8,10 @@ import {
   getMessage,
   listFolders,
   listMessages,
+  listStarredMessages,
   moveMessage,
   sendMessage,
+  updateMessageFlags,
   verifyMailAccess
 } from "../services/mail-service.js";
 import { createSession, deleteSession, getSession } from "../services/session-store.js";
@@ -44,6 +46,13 @@ const moveSchema = z.object({
 const deleteSchema = z.object({
   folder: z.string().min(1),
   uid: z.number().int().positive()
+});
+
+const flagSchema = z.object({
+  folder: z.string().min(1),
+  uid: z.number().int().positive(),
+  unread: z.boolean().optional(),
+  flagged: z.boolean().optional()
 });
 
 const sendSchema = z.object({
@@ -155,6 +164,14 @@ router.get("/messages", async (request, response) => {
     const session = await getAuthenticatedSession(request);
     const folder = request.query.folder?.toString() ?? "INBOX";
     const limit = Number(request.query.limit ?? 25);
+
+     if (folder === "__STARRED__") {
+      const folders = await listFolders(session);
+      const messages = await listStarredMessages(session, folders, Number.isNaN(limit) ? 50 : limit);
+      response.json({ messages });
+      return;
+    }
+
     const messages = await listMessages(session, folder, Number.isNaN(limit) ? 25 : limit);
     response.json({ messages });
   } catch (error) {
@@ -201,6 +218,20 @@ router.post("/messages/delete", async (request, response) => {
     const session = await getAuthenticatedSession(request);
     const payload = deleteSchema.parse(request.body);
     await deleteMessage(session, payload.folder, payload.uid);
+    response.status(204).send();
+  } catch (error) {
+    handleRouteError(error, response);
+  }
+});
+
+router.post("/messages/flags", async (request, response) => {
+  try {
+    const session = await getAuthenticatedSession(request);
+    const payload = flagSchema.parse(request.body);
+    await updateMessageFlags(session, payload.folder, payload.uid, {
+      unread: payload.unread,
+      flagged: payload.flagged
+    });
     response.status(204).send();
   } catch (error) {
     handleRouteError(error, response);
