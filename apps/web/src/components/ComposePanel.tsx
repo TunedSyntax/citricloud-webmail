@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bold, Italic, Paintbrush, SendHorizontal, Type, Underline, X } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, Bold, Heading, Italic, Link2, Paintbrush, SendHorizontal, Type, Underline, X } from "lucide-react";
 
 import type { DraftMessagePayload, SendMessagePayload } from "../lib/api";
 
@@ -72,6 +72,37 @@ export function ComposePanel({ draft, errorMessage, draftSavedAt, isSavingDraft,
 
     editorRef.current.focus();
     document.execCommand(command, false, value);
+    setHtmlBody(editorRef.current.innerHTML);
+  };
+
+  const applyHeading = (heading: "h1" | "h2" | "h3" | "h4" | "p") => {
+    applyEditorCommand("formatBlock", heading === "p" ? "<p>" : `<${heading}>`);
+  };
+
+  const applyLink = () => {
+    const url = window.prompt("Enter URL", "https://");
+    if (!url || !url.trim()) {
+      return;
+    }
+
+    applyEditorCommand("createLink", url.trim());
+  };
+
+  const applyFontSizePx = (sizePx: number) => {
+    if (!editorRef.current) {
+      return;
+    }
+
+    editorRef.current.focus();
+    document.execCommand("styleWithCSS", false, "true");
+    document.execCommand("fontSize", false, "7");
+
+    editorRef.current.querySelectorAll("font[size='7']").forEach((node) => {
+      const element = node as HTMLElement;
+      element.removeAttribute("size");
+      element.style.fontSize = `${sizePx}px`;
+    });
+
     setHtmlBody(editorRef.current.innerHTML);
   };
 
@@ -188,33 +219,61 @@ export function ComposePanel({ draft, errorMessage, draftSavedAt, isSavingDraft,
           </label>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 hide-scrollbar">
-          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-surface-200 bg-white p-2 shadow-sm">
-            <button className="rounded-xl border border-surface-200 bg-white p-2 text-surface-700 hover:bg-surface-100" type="button" onClick={() => applyEditorCommand("bold")}>
+        <div className="min-h-0 flex-1 overflow-y-auto px-0 py-0 hide-scrollbar">
+          <div className="sticky top-0 z-10 mb-2 flex flex-wrap items-center gap-2 bg-white px-6 py-2">
+            <button className="bg-white p-2 text-surface-700 hover:bg-surface-100" type="button" onClick={() => applyEditorCommand("bold")}>
               <Bold className="h-4 w-4" />
             </button>
-            <button className="rounded-xl border border-surface-200 bg-white p-2 text-surface-700 hover:bg-surface-100" type="button" onClick={() => applyEditorCommand("italic")}>
+            <button className="bg-white p-2 text-surface-700 hover:bg-surface-100" type="button" onClick={() => applyEditorCommand("italic")}>
               <Italic className="h-4 w-4" />
             </button>
-            <button className="rounded-xl border border-surface-200 bg-white p-2 text-surface-700 hover:bg-surface-100" type="button" onClick={() => applyEditorCommand("underline")}>
+            <button className="bg-white p-2 text-surface-700 hover:bg-surface-100" type="button" onClick={() => applyEditorCommand("underline")}>
               <Underline className="h-4 w-4" />
             </button>
+            <button className="bg-white p-2 text-surface-700 hover:bg-surface-100" type="button" onClick={applyLink}>
+              <Link2 className="h-4 w-4" />
+            </button>
+            <button className="bg-white p-2 text-surface-700 hover:bg-surface-100" type="button" onClick={() => applyEditorCommand("justifyLeft")}>
+              <AlignLeft className="h-4 w-4" />
+            </button>
+            <button className="bg-white p-2 text-surface-700 hover:bg-surface-100" type="button" onClick={() => applyEditorCommand("justifyCenter")}>
+              <AlignCenter className="h-4 w-4" />
+            </button>
+            <button className="bg-white p-2 text-surface-700 hover:bg-surface-100" type="button" onClick={() => applyEditorCommand("justifyRight")}>
+              <AlignRight className="h-4 w-4" />
+            </button>
 
-            <div className="ml-2 inline-flex items-center gap-2 rounded-xl border border-surface-200 bg-white px-2 py-1.5">
-              <Type className="h-4 w-4 text-surface-500" />
-              <select
-                className="bg-transparent text-sm outline-none"
-                defaultValue="3"
-                onChange={(event) => applyEditorCommand("fontSize", event.target.value)}
-              >
-                <option value="2">Small</option>
-                <option value="3">Normal</option>
-                <option value="4">Large</option>
-                <option value="5">XL</option>
+            <div className="ml-2 inline-flex items-center gap-2 bg-white px-2 py-1.5">
+              <Heading className="h-4 w-4 text-surface-500" />
+              <select className="bg-transparent text-sm outline-none" defaultValue="p" onChange={(event) => applyHeading(event.target.value as "h1" | "h2" | "h3" | "h4" | "p") }>
+                <option value="p">Body</option>
+                <option value="h4">H4</option>
+                <option value="h3">H3</option>
+                <option value="h2">H2</option>
+                <option value="h1">H1</option>
               </select>
             </div>
 
-            <label className="ml-2 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-surface-200 bg-white px-2 py-1.5 text-sm text-surface-700">
+            <div className="ml-2 inline-flex items-center gap-2 bg-white px-2 py-1.5">
+              <Type className="h-4 w-4 text-surface-500" />
+              <select className="bg-transparent text-sm outline-none" defaultValue="Inter" onChange={(event) => applyEditorCommand("fontName", event.target.value)}>
+                <option value="Inter">Inter</option>
+                <option value="Bricolage Grotesque">Bricolage Grotesque</option>
+                <option value="Poppins">Poppins</option>
+                <option value="Merriweather">Merriweather</option>
+              </select>
+              <select
+                className="bg-transparent text-sm outline-none"
+                defaultValue="16"
+                onChange={(event) => applyFontSizePx(Number(event.target.value))}
+              >
+                {[8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 56, 64, 72].map((size) => (
+                  <option key={size} value={size}>{size}px</option>
+                ))}
+              </select>
+            </div>
+
+            <label className="ml-2 inline-flex cursor-pointer items-center gap-2 bg-white px-2 py-1.5 text-sm text-surface-700">
               <Paintbrush className="h-4 w-4 text-surface-500" />
               Color
               <input
@@ -229,7 +288,7 @@ export function ComposePanel({ draft, errorMessage, draftSavedAt, isSavingDraft,
           <div
             ref={editorRef}
             aria-label="Message body editor"
-            className="hide-scrollbar h-full min-h-[220px] w-full overflow-y-auto rounded-[24px] border border-surface-200 bg-surface-50 px-5 py-4 text-sm leading-7 outline-none"
+            className="hide-scrollbar h-full min-h-[220px] w-full overflow-y-auto bg-surface-50 px-6 py-4 text-sm leading-7 outline-none"
             contentEditable
             dangerouslySetInnerHTML={{ __html: htmlBody }}
             onInput={(event) => setHtmlBody((event.target as HTMLDivElement).innerHTML)}
