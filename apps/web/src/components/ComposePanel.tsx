@@ -61,8 +61,13 @@ export function ComposePanel({ draft, errorMessage, draftSavedAt, isSavingDraft,
 
   useEffect(() => {
     setFormState(draft);
-    setHtmlBody(draft?.body ? textToHtml(draft.body) : "<p><br></p>");
+    const nextHtml = draft?.body ? textToHtml(draft.body) : "<p><br></p>";
+    setHtmlBody(nextHtml);
+    if (editorRef.current) {
+      editorRef.current.innerHTML = nextHtml;
+    }
     setValidationMessage(null);
+    lastAutoSaveHashRef.current = "";
   }, [draft]);
 
   const applyEditorCommand = (command: string, value?: string) => {
@@ -182,7 +187,8 @@ export function ComposePanel({ draft, errorMessage, draftSavedAt, isSavingDraft,
             <label key={label} className="grid gap-2 md:grid-cols-[64px_minmax(0,1fr)] md:items-center">
               <span className="text-sm font-medium text-surface-700">{label}</span>
               <input
-                className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm outline-none"
+                className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-left text-sm outline-none"
+                dir="ltr"
                 placeholder={placeholder}
                 value={formState[key as keyof ComposeDraft] as string}
                 onChange={(event) =>
@@ -202,7 +208,8 @@ export function ComposePanel({ draft, errorMessage, draftSavedAt, isSavingDraft,
           <label className="grid gap-2 md:grid-cols-[64px_minmax(0,1fr)] md:items-center">
             <span className="text-sm font-medium text-surface-700">Subject</span>
             <input
-              className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm outline-none"
+              className="rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-left text-sm outline-none"
+              dir="ltr"
               placeholder="Subject"
               value={formState.subject}
               onChange={(event) =>
@@ -288,9 +295,10 @@ export function ComposePanel({ draft, errorMessage, draftSavedAt, isSavingDraft,
           <div
             ref={editorRef}
             aria-label="Message body editor"
-            className="hide-scrollbar h-full min-h-[220px] w-full overflow-y-auto bg-surface-50 px-6 py-4 text-sm leading-7 outline-none"
+            className="hide-scrollbar h-full min-h-[220px] w-full overflow-y-auto bg-surface-50 px-6 py-4 text-left text-sm leading-7 outline-none"
             contentEditable
-            dangerouslySetInnerHTML={{ __html: htmlBody }}
+            dir="ltr"
+            suppressContentEditableWarning
             onInput={(event) => setHtmlBody((event.target as HTMLDivElement).innerHTML)}
           />
         </div>
