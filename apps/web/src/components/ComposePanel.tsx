@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { SendHorizontal, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Bold, Italic, Paintbrush, SendHorizontal, Type, Underline, X } from "lucide-react";
 
 import type { SendMessagePayload } from "../lib/api";
 
@@ -29,22 +29,55 @@ function splitRecipients(value: string): string[] {
     .filter(Boolean);
 }
 
+function escapeHtml(text: string) {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function textToHtml(text: string) {
+  if (!text.trim()) {
+    return "<p><br></p>";
+  }
+
+  return text
+    .split("\n\n")
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replaceAll("\n", "<br>")}</p>`)
+    .join("");
+}
+
 export function ComposePanel({ draft, errorMessage, isSending, onClose, onSend }: ComposePanelProps) {
   const [formState, setFormState] = useState<ComposeDraft | null>(draft);
+  const [htmlBody, setHtmlBody] = useState("");
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setFormState(draft);
+    setHtmlBody(draft?.body ? textToHtml(draft.body) : "<p><br></p>");
     setValidationMessage(null);
   }, [draft]);
+
+  const applyEditorCommand = (command: string, value?: string) => {
+    if (!editorRef.current) {
+      return;
+    }
+
+    editorRef.current.focus();
+    document.execCommand(command, false, value);
+    setHtmlBody(editorRef.current.innerHTML);
+  };
 
   if (!formState) {
     return null;
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-end bg-surface-900/30 backdrop-blur-sm sm:items-center sm:pr-6">
-      <section className="flex h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[28px] border border-white/70 bg-white shadow-[0_30px_80px_rgba(11,33,65,0.24)] sm:h-[82vh] sm:rounded-[28px]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-900/30 p-4 backdrop-blur-sm">
+      <section className="flex h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-[0_30px_80px_rgba(11,33,65,0.24)] sm:h-[82vh]">
         <header className="flex items-center justify-between border-b border-surface-200 px-6 py-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-700">
@@ -106,20 +139,50 @@ export function ComposePanel({ draft, errorMessage, isSending, onClose, onSend }
         </div>
 
         <div className="flex-1 px-6 py-5">
-          <textarea
-            className="h-full min-h-[280px] w-full resize-none rounded-[24px] border border-surface-200 bg-surface-50 px-5 py-4 text-sm leading-7 outline-none"
-            placeholder="Write your message"
-            value={formState.body}
-            onChange={(event) =>
-              setFormState((current) =>
-                current
-                  ? {
-                      ...current,
-                      body: event.target.value
-                    }
-                  : current
-              )
-            }
+          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-surface-200 bg-surface-50 p-2">
+            <button className="rounded-xl border border-surface-200 bg-white p-2 text-surface-700 hover:bg-surface-100" type="button" onClick={() => applyEditorCommand("bold")}>
+              <Bold className="h-4 w-4" />
+            </button>
+            <button className="rounded-xl border border-surface-200 bg-white p-2 text-surface-700 hover:bg-surface-100" type="button" onClick={() => applyEditorCommand("italic")}>
+              <Italic className="h-4 w-4" />
+            </button>
+            <button className="rounded-xl border border-surface-200 bg-white p-2 text-surface-700 hover:bg-surface-100" type="button" onClick={() => applyEditorCommand("underline")}>
+              <Underline className="h-4 w-4" />
+            </button>
+
+            <div className="ml-2 inline-flex items-center gap-2 rounded-xl border border-surface-200 bg-white px-2 py-1.5">
+              <Type className="h-4 w-4 text-surface-500" />
+              <select
+                className="bg-transparent text-sm outline-none"
+                defaultValue="3"
+                onChange={(event) => applyEditorCommand("fontSize", event.target.value)}
+              >
+                <option value="2">Small</option>
+                <option value="3">Normal</option>
+                <option value="4">Large</option>
+                <option value="5">XL</option>
+              </select>
+            </div>
+
+            <label className="ml-2 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-surface-200 bg-white px-2 py-1.5 text-sm text-surface-700">
+              <Paintbrush className="h-4 w-4 text-surface-500" />
+              Color
+              <input
+                className="h-5 w-5 cursor-pointer border-0 bg-transparent p-0"
+                defaultValue="#131a22"
+                type="color"
+                onChange={(event) => applyEditorCommand("foreColor", event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div
+            ref={editorRef}
+            aria-label="Message body editor"
+            className="hide-scrollbar h-full min-h-[280px] w-full overflow-y-auto rounded-[24px] border border-surface-200 bg-surface-50 px-5 py-4 text-sm leading-7 outline-none"
+            contentEditable
+            dangerouslySetInnerHTML={{ __html: htmlBody }}
+            onInput={(event) => setHtmlBody((event.target as HTMLDivElement).innerHTML)}
           />
         </div>
 
@@ -133,13 +196,15 @@ export function ComposePanel({ draft, errorMessage, isSending, onClose, onSend }
                 Cancel
               </button>
               <button
-                className="inline-flex items-center gap-2 rounded-2xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-2xl bg-brand-400 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isSending}
                 type="button"
                 onClick={() => {
                   const to = splitRecipients(formState.to);
                   const cc = splitRecipients(formState.cc);
                   const bcc = splitRecipients(formState.bcc);
+                  const text = editorRef.current?.innerText.trim() ?? "";
+                  const html = editorRef.current?.innerHTML.trim() ?? "";
 
                   if (!to.length) {
                     setValidationMessage("At least one recipient is required.");
@@ -157,7 +222,8 @@ export function ComposePanel({ draft, errorMessage, isSending, onClose, onSend }
                     cc: cc.length ? cc : undefined,
                     bcc: bcc.length ? bcc : undefined,
                     subject: formState.subject,
-                    text: formState.body,
+                    text: text || undefined,
+                    html: html && html !== "<br>" ? html : undefined,
                     inReplyTo: formState.inReplyTo ?? undefined,
                     references: formState.references?.length ? formState.references : undefined
                   });
