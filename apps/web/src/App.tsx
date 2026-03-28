@@ -168,7 +168,7 @@ export default function App() {
 
   return (
     <main
-      className={`min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(25,119,255,0.26),_transparent_30%),linear-gradient(180deg,#eff5fc_0%,#dce9f9_42%,#eef4fc_100%)] text-surface-900 ${
+      className={`min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.24),_transparent_30%),linear-gradient(180deg,#eff5fc_0%,#dce9f9_42%,#eef4fc_100%)] text-surface-900 ${
         isLoggedIn ? "h-screen overflow-hidden" : "px-4 py-8 sm:px-6 lg:px-8"
       }`}
     >

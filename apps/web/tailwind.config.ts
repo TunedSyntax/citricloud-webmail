@@ -6,16 +6,16 @@ export default {
     extend: {
       colors: {
         brand: {
-          50: "#eaf4ff",
-          100: "#d4e8ff",
-          200: "#accfff",
-          300: "#7cb3ff",
-          400: "#4a95ff",
-          500: "#1977ff",
-          600: "#005fdb",
-          700: "#0048a5",
-          800: "#003471",
-          900: "#0b2141"
+          50: "#e0f2fe",
+          100: "#bae6fd",
+          200: "#7dd3fc",
+          300: "#38bdf8",
+          400: "#0ea5e9",
+          500: "#0284c7",
+          600: "#0369a1",
+          700: "#075985",
+          800: "#0c4a6e",
+          900: "#082f49"
         },
         surface: {
           50: "#f7fafe",
@@ -32,7 +32,7 @@ export default {
       },
       boxShadow: {
         panel: "0 18px 40px rgba(10, 34, 70, 0.12)",
-        glow: "0 24px 80px rgba(25, 119, 255, 0.18)"
+        glow: "0 24px 80px rgba(14, 165, 233, 0.2)"
       },
       fontFamily: {
         sans: ["Inter", "sans-serif"],
