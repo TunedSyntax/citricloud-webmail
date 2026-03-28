@@ -77,7 +77,7 @@ export function ComposePanel({ draft, errorMessage, isSending, onClose, onSend }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-900/30 p-4 backdrop-blur-sm">
-      <section className="flex h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-[0_30px_80px_rgba(11,33,65,0.24)] sm:h-[82vh]">
+      <section className="flex h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-[0_30px_80px_rgba(11,33,65,0.24)] sm:h-[84vh]">
         <header className="flex items-center justify-between border-b border-surface-200 px-6 py-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-700">
@@ -138,7 +138,7 @@ export function ComposePanel({ draft, errorMessage, isSending, onClose, onSend }
           </label>
         </div>
 
-        <div className="flex-1 px-6 py-5">
+        <div className="min-h-0 flex-1 px-6 py-4">
           <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-surface-200 bg-surface-50 p-2">
             <button className="rounded-xl border border-surface-200 bg-white p-2 text-surface-700 hover:bg-surface-100" type="button" onClick={() => applyEditorCommand("bold")}>
               <Bold className="h-4 w-4" />
@@ -179,7 +179,7 @@ export function ComposePanel({ draft, errorMessage, isSending, onClose, onSend }
           <div
             ref={editorRef}
             aria-label="Message body editor"
-            className="hide-scrollbar h-full min-h-[280px] w-full overflow-y-auto rounded-[24px] border border-surface-200 bg-surface-50 px-5 py-4 text-sm leading-7 outline-none"
+            className="hide-scrollbar h-full min-h-[140px] w-full overflow-y-auto rounded-[24px] border border-surface-200 bg-surface-50 px-5 py-4 text-sm leading-7 outline-none"
             contentEditable
             dangerouslySetInnerHTML={{ __html: htmlBody }}
             onInput={(event) => setHtmlBody((event.target as HTMLDivElement).innerHTML)}

@@ -59,6 +59,7 @@ const sidebarItems = [
 
 const sidebarWidthStorageKey = "citricloud-webmail.sidebar-width";
 const listWidthStorageKey = "citricloud-webmail.list-width";
+const bottomPaneHeightStorageKey = "citricloud-webmail.bottom-pane-height";
 const readingPaneStorageKey = "citricloud-webmail.reading-pane";
 const compactBreakpoint = 1024;
 
@@ -180,9 +181,11 @@ export function MailDashboard({
   const [readingPane, setReadingPane] = useState<"right" | "bottom">(() => readStoredPane());
   const [sidebarWidth, setSidebarWidth] = useState(() => readStoredNumber(sidebarWidthStorageKey, 272, 240, 420));
   const [listWidth, setListWidth] = useState(() => readStoredNumber(listWidthStorageKey, 340, 280, 620));
-  const [resizeTarget, setResizeTarget] = useState<"sidebar" | "list" | null>(null);
+  const [bottomPaneHeight, setBottomPaneHeight] = useState(() => readStoredNumber(bottomPaneHeightStorageKey, 320, 220, 640));
+  const [resizeTarget, setResizeTarget] = useState<"sidebar" | "list" | "bottom" | null>(null);
   const [paneMenuOpen, setPaneMenuOpen] = useState(false);
   const [isCompactViewport, setIsCompactViewport] = useState(false);
+  const [labelsOpen, setLabelsOpen] = useState(false);
   const [filterUnread, setFilterUnread] = useState(false);
   const [dateRange, setDateRange] = useState<"all" | "today" | "7d" | "30d">("all");
   const [categoryFilter, setCategoryFilter] = useState<"all" | "ops" | "security" | "billing">("all");
@@ -279,6 +282,14 @@ export function MailDashboard({
   }, [listWidth]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(bottomPaneHeightStorageKey, String(bottomPaneHeight));
+  }, [bottomPaneHeight]);
+
+  useEffect(() => {
     if (!resizeTarget) {
       return;
     }
@@ -292,6 +303,11 @@ export function MailDashboard({
       if (resizeTarget === "list" && contentGridRef.current && readingPane === "right") {
         const bounds = contentGridRef.current.getBoundingClientRect();
         setListWidth(clamp(event.clientX - bounds.left, 280, 620));
+      }
+
+      if (resizeTarget === "bottom" && contentGridRef.current && readingPane === "bottom") {
+        const bounds = contentGridRef.current.getBoundingClientRect();
+        setBottomPaneHeight(clamp(event.clientY - bounds.top, 220, 640));
       }
     };
 
@@ -324,6 +340,16 @@ export function MailDashboard({
       window.removeEventListener("resize", updateViewportMode);
     };
   }, []);
+
+  const labelFolders = useMemo(() => {
+    const systemFolderNames = ["inbox", "sent", "draft", "trash", "junk", "spam", "archive"];
+
+    return (foldersQuery.data?.folders ?? []).filter((folder) => {
+      const lower = folder.name.toLowerCase();
+      const hasSystemName = systemFolderNames.some((name) => lower.includes(name));
+      return !hasSystemName;
+    });
+  }, [foldersQuery.data?.folders]);
 
   const filteredMessages = useMemo(() => {
     const now = Date.now();
@@ -561,10 +587,10 @@ export function MailDashboard({
         style={allowDesktopResize ? { gridTemplateColumns: `${sidebarWidth}px minmax(0,1fr)` } : { gridTemplateColumns: "minmax(0,1fr)" }}
       >
         <aside className={`relative flex min-h-0 flex-col overflow-y-auto bg-[linear-gradient(180deg,#0b2141,#14345f)] p-5 text-white hide-scrollbar ${allowDesktopResize ? "border-r border-surface-200" : "border-b border-surface-200"}`}>
-          <div className="mb-6 rounded-3xl bg-white/10 p-4 backdrop-blur">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-100">Connected environment</p>
-            <p className="mt-3 text-lg font-semibold">{session.presetKey}</p>
-            <p className="text-sm text-brand-100">{session.email}</p>
+          <div className="mb-4 border-b border-white/20 pb-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-100">Connected environment</p>
+            <p className="mt-2 text-base font-semibold">{session.presetKey}</p>
+            <p className="text-xs text-brand-100">{session.email}</p>
           </div>
 
           <nav className="space-y-2">
@@ -573,7 +599,7 @@ export function MailDashboard({
               const matchingFolder = foldersQuery.data?.folders.find((folder) =>
                 folder.path.toLowerCase().includes(item.fallback.toLowerCase()) || folder.name.toLowerCase() === item.label.toLowerCase()
               );
-              const targetFolder = matchingFolder?.path ?? item.fallback;
+              const targetFolder = item.label === "Labels" ? labelFolders[0]?.path ?? item.fallback : matchingFolder?.path ?? item.fallback;
 
               return (
                 <button
@@ -583,6 +609,9 @@ export function MailDashboard({
                   }`}
                   type="button"
                   onClick={() => {
+                    if (item.label === "Labels") {
+                      setLabelsOpen((current) => !current);
+                    }
                     setActiveFolder(targetFolder);
                     setSelectedUid(null);
                   }}
@@ -593,6 +622,27 @@ export function MailDashboard({
               );
             })}
           </nav>
+
+          {labelsOpen && labelFolders.length ? (
+            <div className="mt-2 border-t border-white/15 pt-2">
+              <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-100">Folder labels</p>
+              <div className="space-y-1">
+                {labelFolders.map((folder) => (
+                  <button
+                    key={folder.path}
+                    className={`w-full truncate px-2 py-1 text-left text-xs ${activeFolder === folder.path ? "bg-white/20 text-white" : "text-white/80 hover:bg-white/10"}`}
+                    type="button"
+                    onClick={() => {
+                      setActiveFolder(folder.path);
+                      setSelectedUid(null);
+                    }}
+                  >
+                    {folder.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {allowDesktopResize ? (
             <button
@@ -610,6 +660,8 @@ export function MailDashboard({
           style={
             !isCompactViewport && isRightPane
               ? { gridTemplateColumns: `${listWidth}px minmax(0,1fr)` }
+              : !isCompactViewport && !isRightPane
+                ? { gridTemplateRows: `${bottomPaneHeight}px minmax(0,1fr)` }
               : undefined
           }
         >
@@ -723,6 +775,15 @@ export function MailDashboard({
                 className="absolute right-[-3px] top-0 z-10 h-full w-1.5 cursor-col-resize bg-brand-200/30 transition hover:bg-brand-300/70"
                 type="button"
                 onMouseDown={() => setResizeTarget("list")}
+              />
+            ) : null}
+
+            {!isRightPane && allowDesktopResize ? (
+              <button
+                aria-label="Resize bottom pane"
+                className="absolute bottom-[-3px] left-0 z-10 h-1.5 w-full cursor-row-resize bg-brand-200/30 transition hover:bg-brand-300/70"
+                type="button"
+                onMouseDown={() => setResizeTarget("bottom")}
               />
             ) : null}
           </section>
