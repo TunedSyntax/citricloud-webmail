@@ -95,6 +95,39 @@ function buildReplyBody(detail: MessageDetail): string {
   return `\n\nOn ${timestamp}, ${detail.from} wrote:\n${quotedBody}`;
 }
 
+function buildMessageIframeDocument(html: string) {
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <base target="_blank" />
+    <style>
+      :root { color-scheme: light; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        font-family: Inter, Arial, sans-serif;
+        line-height: 1.5;
+        color: #1f2937;
+        background: #f8fafc;
+      }
+      body {
+        padding: 16px;
+        overflow-wrap: anywhere;
+      }
+      img, table {
+        max-width: 100%;
+      }
+      pre {
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>${html}</body>
+</html>`;
+}
+
 export function MailDashboard({
   session,
   initialFolders,
@@ -680,7 +713,13 @@ export function MailDashboard({
 
                 <div className="mt-6 min-h-0 flex-1 overflow-y-auto overscroll-contain bg-surface-50 p-6 text-sm leading-7 text-surface-700 hide-scrollbar">
                   {detail.html ? (
-                    <div dangerouslySetInnerHTML={{ __html: detail.html }} />
+                    <iframe
+                      className="h-full w-full border-0 bg-surface-50"
+                      referrerPolicy="no-referrer"
+                      sandbox="allow-popups allow-popups-to-escape-sandbox"
+                      srcDoc={buildMessageIframeDocument(detail.html)}
+                      title={`Message body ${detail.uid}`}
+                    />
                   ) : (
                     <pre className="whitespace-pre-wrap font-sans">{detail.text || "No body available."}</pre>
                   )}
