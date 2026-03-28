@@ -59,6 +59,7 @@ const sidebarItems = [
 const sidebarWidthStorageKey = "citricloud-webmail.sidebar-width";
 const listWidthStorageKey = "citricloud-webmail.list-width";
 const readingPaneStorageKey = "citricloud-webmail.reading-pane";
+const compactBreakpoint = 1024;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -110,6 +111,7 @@ export function MailDashboard({
   const [listWidth, setListWidth] = useState(() => readStoredNumber(listWidthStorageKey, 340, 280, 620));
   const [resizeTarget, setResizeTarget] = useState<"sidebar" | "list" | null>(null);
   const [paneMenuOpen, setPaneMenuOpen] = useState(false);
+  const [isCompactViewport, setIsCompactViewport] = useState(false);
   const [filterUnread, setFilterUnread] = useState(false);
   const [dateRange, setDateRange] = useState<"all" | "today" | "7d" | "30d">("all");
   const [categoryFilter, setCategoryFilter] = useState<"all" | "ops" | "security" | "billing">("all");
@@ -235,6 +237,23 @@ export function MailDashboard({
     };
   }, [readingPane, resizeTarget]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const updateViewportMode = () => {
+      setIsCompactViewport(window.innerWidth < compactBreakpoint);
+    };
+
+    updateViewportMode();
+    window.addEventListener("resize", updateViewportMode);
+
+    return () => {
+      window.removeEventListener("resize", updateViewportMode);
+    };
+  }, []);
+
   const filteredMessages = useMemo(() => {
     const now = Date.now();
     const categoryKeywords: Record<"ops" | "security" | "billing", string[]> = {
@@ -329,6 +348,7 @@ export function MailDashboard({
   };
 
   const isRightPane = readingPane === "right";
+  const allowDesktopResize = !isCompactViewport;
 
   return (
     <>
@@ -358,13 +378,12 @@ export function MailDashboard({
           </button>
           <div className="relative">
             <button
-              className="inline-flex items-center gap-2 rounded-2xl border border-brand-200 bg-white px-4 py-2.5 text-sm font-medium text-brand-700"
+              className="inline-flex items-center rounded-2xl border border-brand-200 bg-white p-2.5 text-brand-700"
+              title={readingPane === "right" ? "Right pane view" : "Bottom pane view"}
               type="button"
               onClick={() => setPaneMenuOpen((current) => !current)}
             >
               {readingPane === "right" ? <PanelRight className="h-4 w-4" /> : <PanelBottom className="h-4 w-4" />}
-              Pane: {readingPane}
-              <ChevronDown className="h-4 w-4" />
             </button>
 
             {paneMenuOpen ? (
@@ -475,9 +494,9 @@ export function MailDashboard({
       <div
         ref={gridRef}
         className="grid min-h-0"
-        style={{ gridTemplateColumns: `${sidebarWidth}px minmax(0,1fr)` }}
+        style={allowDesktopResize ? { gridTemplateColumns: `${sidebarWidth}px minmax(0,1fr)` } : { gridTemplateColumns: "minmax(0,1fr)" }}
       >
-        <aside className="relative flex min-h-0 flex-col overflow-y-auto border-r border-surface-200 bg-[linear-gradient(180deg,#0b2141,#14345f)] p-5 text-white hide-scrollbar">
+        <aside className={`relative flex min-h-0 flex-col overflow-y-auto bg-[linear-gradient(180deg,#0b2141,#14345f)] p-5 text-white hide-scrollbar ${allowDesktopResize ? "border-r border-surface-200" : "border-b border-surface-200"}`}>
           <div className="mb-6 rounded-3xl bg-white/10 p-4 backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-100">Connected environment</p>
             <p className="mt-3 text-lg font-semibold">{session.presetKey}</p>
@@ -511,18 +530,24 @@ export function MailDashboard({
             })}
           </nav>
 
-          <button
-            aria-label="Resize sidebar"
-            className="absolute right-[-3px] top-0 z-10 h-full w-1.5 cursor-col-resize bg-transparent"
-            type="button"
-            onMouseDown={() => setResizeTarget("sidebar")}
-          />
+          {allowDesktopResize ? (
+            <button
+              aria-label="Resize sidebar"
+              className="absolute right-[-3px] top-0 z-10 h-full w-1.5 cursor-col-resize bg-brand-200/30 transition hover:bg-brand-300/70"
+              type="button"
+              onMouseDown={() => setResizeTarget("sidebar")}
+            />
+          ) : null}
         </aside>
 
         <div
           ref={contentGridRef}
-          className={`grid min-h-0 ${isRightPane ? "" : "grid-rows-[360px_minmax(0,1fr)]"}`}
-          style={isRightPane ? { gridTemplateColumns: `${listWidth}px minmax(0,1fr)` } : undefined}
+          className={`grid min-h-0 ${isCompactViewport || !isRightPane ? "grid-rows-[320px_minmax(0,1fr)]" : ""}`}
+          style={
+            !isCompactViewport && isRightPane
+              ? { gridTemplateColumns: `${listWidth}px minmax(0,1fr)` }
+              : undefined
+          }
         >
           <section className="relative flex min-h-0 flex-col border-r border-surface-200 bg-white">
             <div className="flex items-center justify-between border-b border-surface-200 px-5 py-4">
@@ -559,11 +584,11 @@ export function MailDashboard({
                 Advanced filters
                 <ChevronDown className={`h-3.5 w-3.5 transition ${filtersOpen ? "rotate-180" : "rotate-0"}`} />
               </button>
-              {filtersOpen ? <div className="flex flex-wrap gap-2">
+              {filtersOpen ? <div className="flex flex-wrap gap-1.5">
                 {["all", "today", "7d", "30d"].map((value) => (
                   <button
                     key={`date-${value}`}
-                    className={`rounded-xl px-2.5 py-1 text-xs ${dateRange === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
+                    className={`rounded-xl px-2 py-0.5 text-[11px] ${dateRange === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
                     type="button"
                     onClick={() => setDateRange(value as "all" | "today" | "7d" | "30d")}
                   >
@@ -573,7 +598,7 @@ export function MailDashboard({
                 {["all", "ops", "security", "billing"].map((value) => (
                   <button
                     key={`cat-${value}`}
-                    className={`rounded-xl px-2.5 py-1 text-xs ${categoryFilter === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
+                    className={`rounded-xl px-2 py-0.5 text-[11px] ${categoryFilter === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
                     type="button"
                     onClick={() => setCategoryFilter(value as "all" | "ops" | "security" | "billing")}
                   >
@@ -583,7 +608,7 @@ export function MailDashboard({
                 {["all", "unread", "flagged"].map((value) => (
                   <button
                     key={`status-${value}`}
-                    className={`rounded-xl px-2.5 py-1 text-xs ${statusFilter === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
+                    className={`rounded-xl px-2 py-0.5 text-[11px] ${statusFilter === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
                     type="button"
                     onClick={() => setStatusFilter(value as "all" | "unread" | "flagged")}
                   >
@@ -597,31 +622,31 @@ export function MailDashboard({
               {filteredMessages.map((message) => (
                 <button
                   key={message.uid}
-                  className={`flex w-full items-start gap-3 border-b border-surface-100 px-4 py-3 text-left transition hover:bg-brand-50 ${
+                  className={`flex w-full items-center gap-2.5 border-b border-surface-100 px-3 py-2 text-left transition hover:bg-brand-50 ${
                     selectedUid === message.uid ? "bg-brand-50" : "bg-white"
                   }`}
                   type="button"
                   onClick={() => setSelectedUid(message.uid)}
                 >
-                  <div className="mt-0.5 flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
                     <div className={`h-2.5 w-2.5 rounded-full ${message.unread ? "bg-brand-600" : "bg-surface-200"}`} />
                     {message.flagged ? <Star className="h-3.5 w-3.5 shrink-0 text-amber-500" /> : null}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-medium text-surface-700">{message.from}</p>
+                      <p className="truncate text-xs font-medium text-surface-700">{message.from}</p>
                       <p className="shrink-0 text-xs text-surface-500">{message.date ? new Date(message.date).toLocaleDateString() : "Now"}</p>
                     </div>
-                    <p className="mt-1 truncate text-sm font-semibold text-surface-900">{message.subject}</p>
+                    <p className="mt-0.5 truncate text-sm font-semibold text-surface-900">{message.subject}</p>
                   </div>
                 </button>
               ))}
             </div>
 
-            {isRightPane ? (
+            {isRightPane && allowDesktopResize ? (
               <button
                 aria-label="Resize message list"
-                className="absolute right-[-3px] top-0 z-10 h-full w-1.5 cursor-col-resize bg-transparent"
+                className="absolute right-[-3px] top-0 z-10 h-full w-1.5 cursor-col-resize bg-brand-200/30 transition hover:bg-brand-300/70"
                 type="button"
                 onMouseDown={() => setResizeTarget("list")}
               />
@@ -631,16 +656,16 @@ export function MailDashboard({
           <section className="min-h-0 bg-[linear-gradient(180deg,#f7fafe,#eef4fc)] p-6">
             {detail ? (
               <article className="flex h-full min-h-0 flex-col bg-white/85 p-6 shadow-panel backdrop-blur">
-                <div className="flex items-start justify-between gap-6 border-b border-surface-200 pb-5">
-                  <div>
-                    <h3 className="mt-2 text-3xl font-semibold text-surface-900">{detail.subject}</h3>
+                <div className="flex items-start justify-between gap-3 border-b border-surface-200 pb-5">
+                  <div className="min-w-0 flex-1 pr-2">
+                    <h3 className="mt-1 truncate text-2xl font-semibold text-surface-900 sm:text-[1.9rem]">{detail.subject}</h3>
                     <p className="mt-3 text-sm text-surface-600">From {detail.from}</p>
                     <p className="text-sm text-surface-500">To {detail.to}</p>
                     {detail.cc ? <p className="text-sm text-surface-500">Cc {detail.cc}</p> : null}
                   </div>
-                  <div className="flex flex-col items-end gap-2">
+                  <div className="flex shrink-0 flex-col items-end gap-2">
                     <div className="rounded-xl bg-brand-50 px-2.5 py-1.5 text-right text-xs text-brand-700">
-                      <p>{`${detail.date ? new Date(detail.date).toLocaleString() : "No timestamp"}, ${detail.unread ? "Unread" : "Read"}`}</p>
+                      <p className="whitespace-nowrap">{`${detail.date ? new Date(detail.date).toLocaleString() : "No timestamp"}, ${detail.unread ? "Unread" : "Read"}`}</p>
                     </div>
                     <button
                       className="inline-flex items-center gap-2 rounded-2xl bg-brand-400 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500"
