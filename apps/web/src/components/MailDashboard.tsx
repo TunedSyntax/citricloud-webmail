@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   CirclePlus,
@@ -53,6 +53,33 @@ const sidebarItems = [
   { label: "Labels", icon: Tags, fallback: "Archive" }
 ];
 
+const sidebarWidthStorageKey = "citricloud-webmail.sidebar-width";
+const listWidthStorageKey = "citricloud-webmail.list-width";
+const readingPaneStorageKey = "citricloud-webmail.reading-pane";
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function readStoredNumber(key: string, fallback: number, min: number, max: number) {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  const raw = window.localStorage.getItem(key);
+  const parsed = raw ? Number(raw) : Number.NaN;
+  return Number.isFinite(parsed) ? clamp(parsed, min, max) : fallback;
+}
+
+function readStoredPane() {
+  if (typeof window === "undefined") {
+    return "right" as const;
+  }
+
+  const value = window.localStorage.getItem(readingPaneStorageKey);
+  return value === "bottom" ? "bottom" : "right";
+}
+
 function buildReplyBody(detail: MessageDetail): string {
   const timestamp = detail.date ? new Date(detail.date).toLocaleString() : "an earlier time";
   const originalBody = detail.text || "Original message content is not available in plain text.";
@@ -75,13 +102,18 @@ export function MailDashboard({
   const [activeFolder, setActiveFolder] = useState(initialFolders[0]?.path ?? "INBOX");
   const [selectedUid, setSelectedUid] = useState<number | null>(null);
   const [searchText, setSearchText] = useState("");
-  const [readingPane, setReadingPane] = useState<"right" | "bottom">("right");
+  const [readingPane, setReadingPane] = useState<"right" | "bottom">(() => readStoredPane());
+  const [sidebarWidth, setSidebarWidth] = useState(() => readStoredNumber(sidebarWidthStorageKey, 272, 240, 420));
+  const [listWidth, setListWidth] = useState(() => readStoredNumber(listWidthStorageKey, 340, 280, 620));
+  const [resizeTarget, setResizeTarget] = useState<"sidebar" | "list" | null>(null);
   const [filterUnread, setFilterUnread] = useState(false);
   const [dateRange, setDateRange] = useState<"all" | "today" | "7d" | "30d">("all");
   const [categoryFilter, setCategoryFilter] = useState<"all" | "ops" | "security" | "billing">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "unread" | "flagged">("all");
   const [composerDraft, setComposerDraft] = useState<ComposeDraft | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const contentGridRef = useRef<HTMLDivElement | null>(null);
 
   const foldersQuery = useQuery({
     queryKey: ["folders", session.token],
@@ -144,6 +176,60 @@ export function MailDashboard({
     }
   }, [messagesQuery.data, selectedUid]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(readingPaneStorageKey, readingPane);
+  }, [readingPane]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(sidebarWidthStorageKey, String(sidebarWidth));
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(listWidthStorageKey, String(listWidth));
+  }, [listWidth]);
+
+  useEffect(() => {
+    if (!resizeTarget) {
+      return;
+    }
+
+    const handleMouseMove = (event: MouseEvent) => {
+      if (resizeTarget === "sidebar" && gridRef.current) {
+        const bounds = gridRef.current.getBoundingClientRect();
+        setSidebarWidth(clamp(event.clientX - bounds.left, 240, 420));
+      }
+
+      if (resizeTarget === "list" && contentGridRef.current && readingPane === "right") {
+        const bounds = contentGridRef.current.getBoundingClientRect();
+        setListWidth(clamp(event.clientX - bounds.left, 280, 620));
+      }
+    };
+
+    const handleMouseUp = () => {
+      setResizeTarget(null);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [readingPane, resizeTarget]);
+
   const filteredMessages = useMemo(() => {
     const now = Date.now();
     const categoryKeywords: Record<"ops" | "security" | "billing", string[]> = {
@@ -204,7 +290,7 @@ export function MailDashboard({
       const haystack = `${message.subject} ${message.from} ${message.preview}`.toLowerCase();
       return haystack.includes(searchText.toLowerCase());
     });
-  }, [filterUnread, messagesQuery.data?.messages, searchText]);
+  }, [categoryFilter, dateRange, filterUnread, messagesQuery.data?.messages, searchText, statusFilter]);
 
   const detail = selectedMessageQuery.data?.message;
   const switchableAccounts = savedAccounts.filter((account) => account.session.token !== session.token);
@@ -237,6 +323,8 @@ export function MailDashboard({
     });
   };
 
+  const isRightPane = readingPane === "right";
+
   return (
     <>
       <section className="grid h-full min-h-screen grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-white/80 shadow-glow backdrop-blur">
@@ -257,20 +345,20 @@ export function MailDashboard({
             />
           </div>
           <button
-            className={`rounded-2xl px-4 py-3 text-sm font-medium ${filterUnread ? "bg-brand-600 text-white" : "border border-surface-200 bg-white text-surface-700"}`}
+            className={`rounded-2xl px-4 py-2.5 text-sm font-medium ${filterUnread ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
             type="button"
             onClick={() => setFilterUnread((current) => !current)}
           >
             Unread
           </button>
           <button
-            className="rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm font-medium text-surface-700"
+            className="rounded-2xl border border-brand-200 bg-white px-4 py-2.5 text-sm font-medium text-brand-700"
             type="button"
             onClick={() => setReadingPane((current) => (current === "right" ? "bottom" : "right"))}
           >
             Pane: {readingPane}
           </button>
-          <button className="inline-flex items-center gap-2 rounded-2xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white" type="button" onClick={openNewComposer}>
+          <button className="inline-flex items-center gap-2 rounded-2xl bg-brand-400 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500" type="button" onClick={openNewComposer}>
             New Message
           </button>
           <div className="relative">
@@ -344,8 +432,12 @@ export function MailDashboard({
         </div>
       </header>
 
-      <div className={`grid min-h-0 ${readingPane === "right" ? "xl:grid-cols-[240px_290px_minmax(0,1fr)]" : "xl:grid-cols-[240px_minmax(0,1fr)]"}`}>
-        <aside className="flex min-h-0 flex-col overflow-y-auto border-r border-surface-200 bg-[linear-gradient(180deg,#0b2141,#14345f)] p-5 text-white">
+      <div
+        ref={gridRef}
+        className="grid min-h-0"
+        style={{ gridTemplateColumns: `${sidebarWidth}px minmax(0,1fr)` }}
+      >
+        <aside className="relative flex min-h-0 flex-col overflow-y-auto border-r border-surface-200 bg-[linear-gradient(180deg,#0b2141,#14345f)] p-5 text-white hide-scrollbar">
           <div className="mb-6 rounded-3xl bg-white/10 p-4 backdrop-blur">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-100">Connected environment</p>
             <p className="mt-3 text-lg font-semibold">{session.presetKey}</p>
@@ -379,76 +471,20 @@ export function MailDashboard({
             })}
           </nav>
 
-          <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-100">Advanced filters</p>
-            <div className="mt-4 space-y-3 text-sm text-white/80">
-              <div>
-                <p className="mb-2 text-xs uppercase tracking-[0.2em] text-brand-100">Date</p>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    ["all", "All"],
-                    ["today", "Today"],
-                    ["7d", "7d"],
-                    ["30d", "30d"]
-                  ].map(([value, label]) => (
-                    <button
-                      key={value}
-                      className={`rounded-xl px-3 py-1.5 text-xs ${dateRange === value ? "bg-white text-brand-700" : "bg-white/10 text-white hover:bg-white/20"}`}
-                      type="button"
-                      onClick={() => setDateRange(value as "all" | "today" | "7d" | "30d")}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <p className="mb-2 text-xs uppercase tracking-[0.2em] text-brand-100">Category</p>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    ["all", "All"],
-                    ["ops", "Ops"],
-                    ["security", "Security"],
-                    ["billing", "Billing"]
-                  ].map(([value, label]) => (
-                    <button
-                      key={value}
-                      className={`rounded-xl px-3 py-1.5 text-xs ${categoryFilter === value ? "bg-white text-brand-700" : "bg-white/10 text-white hover:bg-white/20"}`}
-                      type="button"
-                      onClick={() => setCategoryFilter(value as "all" | "ops" | "security" | "billing")}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <p className="mb-2 text-xs uppercase tracking-[0.2em] text-brand-100">Status</p>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    ["all", "All"],
-                    ["unread", "Unread"],
-                    ["flagged", "Flagged"]
-                  ].map(([value, label]) => (
-                    <button
-                      key={value}
-                      className={`rounded-xl px-3 py-1.5 text-xs ${statusFilter === value ? "bg-white text-brand-700" : "bg-white/10 text-white hover:bg-white/20"}`}
-                      type="button"
-                      onClick={() => setStatusFilter(value as "all" | "unread" | "flagged")}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          <button
+            aria-label="Resize sidebar"
+            className="absolute right-[-3px] top-0 z-10 h-full w-1.5 cursor-col-resize bg-transparent"
+            type="button"
+            onMouseDown={() => setResizeTarget("sidebar")}
+          />
         </aside>
 
-        <div className={`grid min-h-0 ${readingPane === "right" ? "grid-cols-[290px_minmax(0,1fr)] xl:col-span-2" : "grid-rows-[320px_minmax(0,1fr)] xl:col-span-1"}`}>
-          <section className="flex min-h-0 flex-col border-r border-surface-200 bg-white">
+        <div
+          ref={contentGridRef}
+          className={`grid min-h-0 ${isRightPane ? "" : "grid-rows-[360px_minmax(0,1fr)]"}`}
+          style={isRightPane ? { gridTemplateColumns: `${listWidth}px minmax(0,1fr)` } : undefined}
+        >
+          <section className="relative flex min-h-0 flex-col border-r border-surface-200 bg-white">
             <div className="flex items-center justify-between border-b border-surface-200 px-5 py-4">
               <div>
                 <p className="text-sm font-semibold text-surface-900">{activeFolder}</p>
@@ -456,7 +492,7 @@ export function MailDashboard({
               </div>
               <div className="flex gap-2">
                 <button
-                  className="rounded-xl border border-surface-200 px-3 py-2 text-sm text-surface-700"
+                  className="rounded-xl border border-brand-200 px-3 py-2 text-sm text-brand-700 hover:bg-brand-50"
                   disabled={selectedUid === null || deleteMutation.isPending}
                   type="button"
                   onClick={() => selectedUid !== null && deleteMutation.mutate(selectedUid)}
@@ -464,7 +500,7 @@ export function MailDashboard({
                   Delete
                 </button>
                 <button
-                  className="rounded-xl border border-surface-200 px-3 py-2 text-sm text-surface-700"
+                  className="rounded-xl border border-brand-200 px-3 py-2 text-sm text-brand-700 hover:bg-brand-50"
                   disabled={selectedUid === null || moveMutation.isPending}
                   type="button"
                   onClick={() => selectedUid !== null && moveMutation.mutate(selectedUid)}
@@ -474,11 +510,47 @@ export function MailDashboard({
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="border-b border-surface-200 bg-surface-50/70 px-3 py-2">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-surface-500">Advanced filters</div>
+              <div className="flex flex-wrap gap-2">
+                {["all", "today", "7d", "30d"].map((value) => (
+                  <button
+                    key={`date-${value}`}
+                    className={`rounded-xl px-2.5 py-1 text-xs ${dateRange === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
+                    type="button"
+                    onClick={() => setDateRange(value as "all" | "today" | "7d" | "30d")}
+                  >
+                    {value === "all" ? "Date: All" : `Date: ${value}`}
+                  </button>
+                ))}
+                {["all", "ops", "security", "billing"].map((value) => (
+                  <button
+                    key={`cat-${value}`}
+                    className={`rounded-xl px-2.5 py-1 text-xs ${categoryFilter === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
+                    type="button"
+                    onClick={() => setCategoryFilter(value as "all" | "ops" | "security" | "billing")}
+                  >
+                    {value === "all" ? "Category: All" : `Category: ${value}`}
+                  </button>
+                ))}
+                {["all", "unread", "flagged"].map((value) => (
+                  <button
+                    key={`status-${value}`}
+                    className={`rounded-xl px-2.5 py-1 text-xs ${statusFilter === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
+                    type="button"
+                    onClick={() => setStatusFilter(value as "all" | "unread" | "flagged")}
+                  >
+                    {value === "all" ? "Status: All" : `Status: ${value}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto hide-scrollbar">
               {filteredMessages.map((message) => (
                 <button
                   key={message.uid}
-                  className={`flex w-full items-start gap-3 border-b border-surface-100 px-3 py-2.5 text-left transition hover:bg-brand-50 ${
+                  className={`flex w-full items-start gap-3 border-b border-surface-100 px-4 py-3 text-left transition hover:bg-brand-50 ${
                     selectedUid === message.uid ? "bg-brand-50" : "bg-white"
                   }`}
                   type="button"
@@ -490,14 +562,23 @@ export function MailDashboard({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-xs font-medium text-surface-700">{message.from}</p>
-                      <p className="shrink-0 text-[11px] text-surface-500">{message.date ? new Date(message.date).toLocaleDateString() : "Now"}</p>
+                      <p className="truncate text-sm font-medium text-surface-700">{message.from}</p>
+                      <p className="shrink-0 text-xs text-surface-500">{message.date ? new Date(message.date).toLocaleDateString() : "Now"}</p>
                     </div>
-                    <p className="mt-0.5 truncate text-sm font-semibold text-surface-900">{message.subject}</p>
+                    <p className="mt-1 truncate text-sm font-semibold text-surface-900">{message.subject}</p>
                   </div>
                 </button>
               ))}
             </div>
+
+            {isRightPane ? (
+              <button
+                aria-label="Resize message list"
+                className="absolute right-[-3px] top-0 z-10 h-full w-1.5 cursor-col-resize bg-transparent"
+                type="button"
+                onMouseDown={() => setResizeTarget("list")}
+              />
+            ) : null}
           </section>
 
           <section className="min-h-0 bg-[linear-gradient(180deg,#f7fafe,#eef4fc)] p-6">
@@ -512,12 +593,11 @@ export function MailDashboard({
                     {detail.cc ? <p className="text-sm text-surface-500">Cc {detail.cc}</p> : null}
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                    <div className="rounded-xl bg-brand-50 px-3 py-2 text-right text-xs text-brand-700">
-                      <p>{detail.date ? new Date(detail.date).toLocaleString() : "No timestamp"}</p>
-                      <p className="font-medium">{detail.unread ? "Unread" : "Read"}</p>
+                    <div className="rounded-xl bg-brand-50 px-2.5 py-1.5 text-right text-xs text-brand-700">
+                      <p>{`${detail.date ? new Date(detail.date).toLocaleString() : "No timestamp"}, ${detail.unread ? "Unread" : "Read"}`}</p>
                     </div>
                     <button
-                      className="inline-flex items-center gap-2 rounded-2xl border border-brand-200 bg-white px-4 py-2 text-sm font-medium text-brand-700"
+                      className="inline-flex items-center gap-2 rounded-2xl bg-brand-400 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500"
                       type="button"
                       onClick={openReplyComposer}
                     >
@@ -527,7 +607,7 @@ export function MailDashboard({
                   </div>
                 </div>
 
-                <div className="mt-6 min-h-0 flex-1 overflow-y-auto overscroll-contain bg-surface-50 p-6 text-sm leading-7 text-surface-700">
+                <div className="mt-6 min-h-0 flex-1 overflow-y-auto overscroll-contain bg-surface-50 p-6 text-sm leading-7 text-surface-700 hide-scrollbar">
                   {detail.html ? (
                     <div dangerouslySetInnerHTML={{ __html: detail.html }} />
                   ) : (
