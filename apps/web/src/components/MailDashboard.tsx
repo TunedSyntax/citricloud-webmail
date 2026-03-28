@@ -1115,8 +1115,8 @@ export function MailDashboard({
             <button
               className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
               type="button"
-              onMouseDown={(event) => {
-                event.preventDefault();
+              onClick={(event) => {
+                event.stopPropagation();
                 moveSelectedMessage(archiveFolderPath, { folder: contextMenu.message.folder, uid: contextMenu.message.uid });
               }}
             >
@@ -1125,8 +1125,8 @@ export function MailDashboard({
             <button
               className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
               type="button"
-              onMouseDown={(event) => {
-                event.preventDefault();
+              onClick={(event) => {
+                event.stopPropagation();
                 deleteSelectedMessage({ folder: contextMenu.message.folder, uid: contextMenu.message.uid });
               }}
             >
@@ -1136,8 +1136,8 @@ export function MailDashboard({
               className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50 disabled:opacity-50"
               disabled={!spamFolderPath}
               type="button"
-              onMouseDown={(event) => {
-                event.preventDefault();
+              onClick={(event) => {
+                event.stopPropagation();
                 moveSelectedMessage(spamFolderPath, { folder: contextMenu.message.folder, uid: contextMenu.message.uid });
               }}
             >
@@ -1146,8 +1146,8 @@ export function MailDashboard({
             <button
               className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
               type="button"
-              onMouseDown={(event) => {
-                event.preventDefault();
+              onClick={(event) => {
+                event.stopPropagation();
                 updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, unread: true });
               }}
             >
@@ -1156,8 +1156,8 @@ export function MailDashboard({
             <button
               className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
               type="button"
-              onMouseDown={(event) => {
-                event.preventDefault();
+              onClick={(event) => {
+                event.stopPropagation();
                 updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, unread: false });
               }}
             >
@@ -1166,8 +1166,8 @@ export function MailDashboard({
             <button
               className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
               type="button"
-              onMouseDown={(event) => {
-                event.preventDefault();
+              onClick={(event) => {
+                event.stopPropagation();
                 updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, flagged: true });
               }}
             >
@@ -1176,8 +1176,8 @@ export function MailDashboard({
             <button
               className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
               type="button"
-              onMouseDown={(event) => {
-                event.preventDefault();
+              onClick={(event) => {
+                event.stopPropagation();
                 updateMessageState({ folder: contextMenu.message.folder, uid: contextMenu.message.uid, flagged: false });
               }}
             >

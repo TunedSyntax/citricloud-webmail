@@ -104,6 +104,13 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+function authHeaders(token: string) {
+  return {
+    Authorization: `Bearer ${token}`,
+    "x-session-token": token
+  };
+}
+
 export function getProfiles() {
   return request<{ profiles: ConnectionProfile[] }>("/api/setup/profiles");
 }
@@ -131,42 +138,32 @@ export function login(payload: {
 export function logout(token: string) {
   return request<void>("/api/session/logout", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
+    headers: authHeaders(token)
   });
 }
 
 export function getFolders(token: string) {
   return request<{ folders: MailFolder[] }>("/api/messages/folders", {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
+    headers: authHeaders(token)
   });
 }
 
 export function getMessages(token: string, folder: string) {
   return request<{ messages: MessagePreview[] }>(`/api/messages?folder=${encodeURIComponent(folder)}`, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
+    headers: authHeaders(token)
   });
 }
 
 export function getMessage(token: string, folder: string, uid: number) {
   return request<{ message: MessageDetail }>(`/api/messages/${uid}?folder=${encodeURIComponent(folder)}`, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
+    headers: authHeaders(token)
   });
 }
 
 export function deleteMessage(token: string, folder: string, uid: number) {
   return request<void>("/api/messages/delete", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
+    headers: authHeaders(token),
     body: JSON.stringify({ folder, uid })
   });
 }
@@ -174,9 +171,7 @@ export function deleteMessage(token: string, folder: string, uid: number) {
 export function moveMessage(token: string, folder: string, uid: number, destination: string) {
   return request<void>("/api/messages/move", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
+    headers: authHeaders(token),
     body: JSON.stringify({ folder, uid, destination })
   });
 }
@@ -184,9 +179,7 @@ export function moveMessage(token: string, folder: string, uid: number, destinat
 export function updateMessageFlags(token: string, payload: { folder: string; uid: number; unread?: boolean; flagged?: boolean }) {
   return request<void>("/api/messages/flags", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
+    headers: authHeaders(token),
     body: JSON.stringify(payload)
   });
 }
@@ -194,9 +187,7 @@ export function updateMessageFlags(token: string, payload: { folder: string; uid
 export function sendMessage(token: string, payload: SendMessagePayload) {
   return request<{ status: string }>("/api/messages/send", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
+    headers: authHeaders(token),
     body: JSON.stringify(payload)
   });
 }
