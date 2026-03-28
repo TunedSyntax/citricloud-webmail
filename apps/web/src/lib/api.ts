@@ -75,6 +75,23 @@ export type SendMessagePayload = {
   references?: string[];
 };
 
+export type DraftMessagePayload = {
+  folder: string;
+  to?: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject?: string;
+  text?: string;
+  html?: string;
+  inReplyTo?: string;
+  references?: string[];
+};
+
+export type MoveBatchItem = {
+  folder: string;
+  uid: number;
+};
+
 export type EnvironmentVersions = {
   dev: string;
   staging: string;
@@ -176,6 +193,14 @@ export function moveMessage(token: string, folder: string, uid: number, destinat
   });
 }
 
+export function moveMessagesBatch(token: string, items: MoveBatchItem[], destination: string) {
+  return request<void>("/api/messages/move-batch", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ items, destination })
+  });
+}
+
 export function updateMessageFlags(token: string, payload: { folder: string; uid: number; unread?: boolean; flagged?: boolean }) {
   return request<void>("/api/messages/flags", {
     method: "POST",
@@ -189,6 +214,30 @@ export function sendMessage(token: string, payload: SendMessagePayload) {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload)
+  });
+}
+
+export function saveDraftMessage(token: string, payload: DraftMessagePayload) {
+  return request<{ status: string }>("/api/messages/drafts/save", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload)
+  });
+}
+
+export function createFolder(token: string, folder: string) {
+  return request<{ status: string }>("/api/messages/folders/create", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ folder })
+  });
+}
+
+export function deleteFolder(token: string, folder: string) {
+  return request<{ status: string }>("/api/messages/folders/delete", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ folder })
   });
 }
 

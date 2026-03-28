@@ -4,12 +4,16 @@ import { z } from "zod";
 
 import { detectPresetByEmail, getPresetByKey, mailPresets } from "../config/profiles.js";
 import {
+  createFolder,
   deleteMessage,
+  deleteFolder,
   getMessage,
   listFolders,
   listMessages,
   listStarredMessages,
+  moveMessagesBatch,
   moveMessage,
+  saveDraftMessage,
   sendMessage,
   updateMessageFlags,
   verifyMailAccess
@@ -43,6 +47,16 @@ const moveSchema = z.object({
   uid: z.number().int().positive()
 });
 
+const moveBatchSchema = z.object({
+  items: z.array(
+    z.object({
+      folder: z.string().min(1),
+      uid: z.number().int().positive()
+    })
+  ).min(1),
+  destination: z.string().min(1)
+});
+
 const deleteSchema = z.object({
   folder: z.string().min(1),
   uid: z.number().int().positive()
@@ -60,6 +74,22 @@ const sendSchema = z.object({
   cc: z.array(z.string().email()).optional(),
   bcc: z.array(z.string().email()).optional(),
   subject: z.string().min(1),
+  text: z.string().optional(),
+  html: z.string().optional(),
+  inReplyTo: z.string().optional(),
+  references: z.array(z.string()).optional()
+});
+
+const folderSchema = z.object({
+  folder: z.string().min(1)
+});
+
+const saveDraftSchema = z.object({
+  folder: z.string().min(1),
+  to: z.array(z.string().email()).optional(),
+  cc: z.array(z.string().email()).optional(),
+  bcc: z.array(z.string().email()).optional(),
+  subject: z.string().optional(),
   text: z.string().optional(),
   html: z.string().optional(),
   inReplyTo: z.string().optional(),
@@ -213,6 +243,17 @@ router.post("/messages/move", async (request, response) => {
   }
 });
 
+router.post("/messages/move-batch", async (request, response) => {
+  try {
+    const session = await getAuthenticatedSession(request);
+    const payload = moveBatchSchema.parse(request.body);
+    await moveMessagesBatch(session, payload.items, payload.destination);
+    response.status(204).send();
+  } catch (error) {
+    handleRouteError(error, response);
+  }
+});
+
 router.post("/messages/delete", async (request, response) => {
   try {
     const session = await getAuthenticatedSession(request);
@@ -233,6 +274,39 @@ router.post("/messages/flags", async (request, response) => {
       flagged: payload.flagged
     });
     response.status(204).send();
+  } catch (error) {
+    handleRouteError(error, response);
+  }
+});
+
+router.post("/messages/folders/create", async (request, response) => {
+  try {
+    const session = await getAuthenticatedSession(request);
+    const payload = folderSchema.parse(request.body);
+    await createFolder(session, payload.folder);
+    response.status(201).json({ status: "created" });
+  } catch (error) {
+    handleRouteError(error, response);
+  }
+});
+
+router.post("/messages/folders/delete", async (request, response) => {
+  try {
+    const session = await getAuthenticatedSession(request);
+    const payload = folderSchema.parse(request.body);
+    await deleteFolder(session, payload.folder);
+    response.status(200).json({ status: "deleted" });
+  } catch (error) {
+    handleRouteError(error, response);
+  }
+});
+
+router.post("/messages/drafts/save", async (request, response) => {
+  try {
+    const session = await getAuthenticatedSession(request);
+    const payload = saveDraftSchema.parse(request.body);
+    await saveDraftMessage(session, payload);
+    response.status(202).json({ status: "saved" });
   } catch (error) {
     handleRouteError(error, response);
   }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Bold, Italic, Paintbrush, SendHorizontal, Type, Underline, X } from "lucide-react";
 
-import type { SendMessagePayload } from "../lib/api";
+import type { DraftMessagePayload, SendMessagePayload } from "../lib/api";
 
 export type ComposeDraft = {
   mode: "compose" | "reply";
@@ -17,8 +17,11 @@ export type ComposeDraft = {
 type ComposePanelProps = {
   draft: ComposeDraft | null;
   errorMessage?: string;
+  draftSavedAt?: string | null;
+  isSavingDraft: boolean;
   isSending: boolean;
   onClose: () => void;
+  onSaveDraft: (payload: Omit<DraftMessagePayload, "folder">) => void;
   onSend: (payload: SendMessagePayload) => void;
 };
 
@@ -49,10 +52,11 @@ function textToHtml(text: string) {
     .join("");
 }
 
-export function ComposePanel({ draft, errorMessage, isSending, onClose, onSend }: ComposePanelProps) {
+export function ComposePanel({ draft, errorMessage, draftSavedAt, isSavingDraft, isSending, onClose, onSaveDraft, onSend }: ComposePanelProps) {
   const [formState, setFormState] = useState<ComposeDraft | null>(draft);
   const [htmlBody, setHtmlBody] = useState("");
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
+  const lastAutoSaveHashRef = useRef<string>("");
   const editorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -70,6 +74,51 @@ export function ComposePanel({ draft, errorMessage, isSending, onClose, onSend }
     document.execCommand(command, false, value);
     setHtmlBody(editorRef.current.innerHTML);
   };
+
+  const buildDraftPayload = () => {
+    if (!formState) {
+      return null;
+    }
+
+    const to = splitRecipients(formState.to);
+    const cc = splitRecipients(formState.cc);
+    const bcc = splitRecipients(formState.bcc);
+    const text = editorRef.current?.innerText.trim() ?? "";
+    const html = editorRef.current?.innerHTML.trim() ?? "";
+
+    const payload: Omit<DraftMessagePayload, "folder"> = {
+      to: to.length ? to : undefined,
+      cc: cc.length ? cc : undefined,
+      bcc: bcc.length ? bcc : undefined,
+      subject: formState.subject || undefined,
+      text: text || undefined,
+      html: html && html !== "<br>" ? html : undefined,
+      inReplyTo: formState.inReplyTo ?? undefined,
+      references: formState.references?.length ? formState.references : undefined
+    };
+
+    const hasContent = Boolean(payload.subject || payload.text || payload.html || payload.to?.length || payload.cc?.length || payload.bcc?.length);
+    return hasContent ? payload : null;
+  };
+
+  useEffect(() => {
+    const payload = buildDraftPayload();
+    if (!payload || isSending || isSavingDraft) {
+      return;
+    }
+
+    const hash = JSON.stringify(payload);
+    if (hash === lastAutoSaveHashRef.current) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      onSaveDraft(payload);
+      lastAutoSaveHashRef.current = hash;
+    }, 15000);
+
+    return () => window.clearTimeout(timer);
+  }, [formState, htmlBody, isSavingDraft, isSending, onSaveDraft]);
 
   if (!formState) {
     return null;
@@ -190,11 +239,29 @@ export function ComposePanel({ draft, errorMessage, isSending, onClose, onSend }
         <footer className="shrink-0 border-t border-surface-200 bg-white/90 px-6 py-5 backdrop-blur">
           {validationMessage ? <p className="mb-3 text-sm text-rose-600">{validationMessage}</p> : null}
           {errorMessage ? <p className="mb-3 text-sm text-rose-600">{errorMessage}</p> : null}
+          {draftSavedAt ? <p className="mb-3 text-sm text-emerald-600">Draft saved at {draftSavedAt}</p> : null}
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-surface-500">Separate multiple recipients with commas.</p>
             <div className="flex gap-3">
               <button className="rounded-2xl border border-surface-200 px-4 py-3 text-sm font-medium text-surface-700" type="button" onClick={onClose}>
                 Cancel
+              </button>
+              <button
+                className="rounded-2xl border border-brand-200 px-4 py-3 text-sm font-medium text-brand-700 disabled:opacity-60"
+                disabled={isSavingDraft}
+                type="button"
+                onClick={() => {
+                  const payload = buildDraftPayload();
+                  if (!payload) {
+                    setValidationMessage("Add content before saving a draft.");
+                    return;
+                  }
+
+                  setValidationMessage(null);
+                  onSaveDraft(payload);
+                }}
+              >
+                {isSavingDraft ? "Saving..." : "Send to Draft"}
               </button>
               <button
                 className="inline-flex items-center gap-2 rounded-2xl bg-brand-400 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"

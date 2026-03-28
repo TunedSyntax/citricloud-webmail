@@ -35,6 +35,11 @@ type MessageAttachment = {
   contentBase64: string;
 };
 
+type MoveBatchItem = {
+  folder: string;
+  uid: number;
+};
+
 type AddressTextLike = {
   text?: string;
   value?: Array<{
@@ -310,8 +315,31 @@ export function deleteMessage(session: MailSession, folder: string, uid: number)
 
 export function moveMessage(session: MailSession, folder: string, uid: number, destination: string): Promise<void> {
   return withImapClient(session, async (client) => {
+    if (folder === destination) {
+      return;
+    }
+
     await client.mailboxOpen(folder);
     await client.messageMove(uid, destination, { uid: true });
+  });
+}
+
+export function moveMessagesBatch(session: MailSession, items: MoveBatchItem[], destination: string): Promise<void> {
+  return withImapClient(session, async (client) => {
+    let lastOpenedFolder: string | null = null;
+
+    for (const item of items) {
+      if (item.folder === destination) {
+        continue;
+      }
+
+      if (lastOpenedFolder !== item.folder) {
+        await client.mailboxOpen(item.folder);
+        lastOpenedFolder = item.folder;
+      }
+
+      await client.messageMove(item.uid, destination, { uid: true });
+    }
   });
 }
 
@@ -376,5 +404,76 @@ export async function sendMessage(
     html: payload.html,
     inReplyTo: payload.inReplyTo,
     references: payload.references
+  });
+}
+
+export function createFolder(session: MailSession, folder: string): Promise<void> {
+  return withImapClient(session, async (client) => {
+    await client.mailboxCreate(folder);
+  });
+}
+
+export function deleteFolder(session: MailSession, folder: string): Promise<void> {
+  return withImapClient(session, async (client) => {
+    await client.mailboxDelete(folder);
+  });
+}
+
+function buildDraftRawMessage(
+  session: MailSession,
+  payload: {
+    to?: string[];
+    cc?: string[];
+    bcc?: string[];
+    subject?: string;
+    text?: string;
+    html?: string;
+    inReplyTo?: string;
+    references?: string[];
+  }
+) {
+  const headers: string[] = [];
+  headers.push(`From: ${session.email}`);
+  if (payload.to?.length) {
+    headers.push(`To: ${payload.to.join(", ")}`);
+  }
+  if (payload.cc?.length) {
+    headers.push(`Cc: ${payload.cc.join(", ")}`);
+  }
+  if (payload.bcc?.length) {
+    headers.push(`Bcc: ${payload.bcc.join(", ")}`);
+  }
+  headers.push(`Subject: ${payload.subject?.trim() || "(no subject)"}`);
+  headers.push(`Date: ${new Date().toUTCString()}`);
+  headers.push("MIME-Version: 1.0");
+  headers.push("Content-Type: text/plain; charset=utf-8");
+  if (payload.inReplyTo) {
+    headers.push(`In-Reply-To: ${payload.inReplyTo}`);
+  }
+  if (payload.references?.length) {
+    headers.push(`References: ${payload.references.join(" ")}`);
+  }
+
+  const body = payload.text?.trim() || payload.html?.replace(/<[^>]+>/g, " ").trim() || "Draft";
+  return `${headers.join("\r\n")}\r\n\r\n${body}\r\n`;
+}
+
+export function saveDraftMessage(
+  session: MailSession,
+  payload: {
+    folder: string;
+    to?: string[];
+    cc?: string[];
+    bcc?: string[];
+    subject?: string;
+    text?: string;
+    html?: string;
+    inReplyTo?: string;
+    references?: string[];
+  }
+): Promise<void> {
+  return withImapClient(session, async (client) => {
+    const raw = buildDraftRawMessage(session, payload);
+    await client.append(payload.folder, raw, ["\\Draft"]);
   });
 }
