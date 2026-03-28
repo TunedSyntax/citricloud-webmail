@@ -402,13 +402,6 @@ export function MailDashboard({
               onChange={(event) => setSearchText(event.target.value)}
             />
           </div>
-          <button
-            className={`rounded-2xl px-4 py-2.5 text-sm font-medium ${filterUnread ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
-            type="button"
-            onClick={() => setFilterUnread((current) => !current)}
-          >
-            Unread
-          </button>
           <div className="relative">
             <button
               className="inline-flex items-center rounded-2xl border border-brand-200 bg-white p-2.5 text-brand-700"
@@ -590,6 +583,13 @@ export function MailDashboard({
               </div>
               <div className="flex gap-2">
                 <button
+                  className={`rounded-xl border border-brand-200 px-3 py-2 text-sm ${filterUnread ? "bg-brand-400 text-white" : "text-brand-700 hover:bg-brand-50"}`}
+                  type="button"
+                  onClick={() => setFilterUnread((current) => !current)}
+                >
+                  Unread
+                </button>
+                <button
                   className="rounded-xl border border-brand-200 px-3 py-2 text-sm text-brand-700 hover:bg-brand-50"
                   disabled={selectedUid === null || deleteMutation.isPending}
                   type="button"
@@ -670,7 +670,7 @@ export function MailDashboard({
                       <p className="truncate text-xs font-medium text-surface-700">{message.from}</p>
                       <p className="shrink-0 text-xs text-surface-500">{message.date ? new Date(message.date).toLocaleDateString() : "Now"}</p>
                     </div>
-                    <p className="mt-0.5 truncate text-sm font-semibold text-surface-900">{message.subject}</p>
+                    <p className="mt-0.5 break-words text-sm font-semibold leading-5 text-surface-900">{message.subject}</p>
                   </div>
                 </button>
               ))}
@@ -734,7 +734,7 @@ export function MailDashboard({
         </div>
       </div>
 
-      <footer className="w-full border-t border-surface-200 bg-white px-6 py-2.5 text-xs text-surface-600">
+      <footer className="w-full border-t border-surface-200 bg-white px-6 py-4 text-xs text-surface-600">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p>
             Copyright CITRICLOUD · <a className="font-semibold text-brand-700 hover:underline" href="https://citricloud.com" rel="noreferrer" target="_blank">citricloud.com</a>
