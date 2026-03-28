@@ -227,7 +227,12 @@ export function MailDashboard({
   });
 
   const availableFolders = foldersQuery.data?.folders ?? initialFolders;
-  const selectedPreview = (messagesQuery.data?.messages ?? []).find((message) => message.uid === selectedUid) ?? null;
+  const selectedPreview =
+    (messagesQuery.data?.messages ?? []).find(
+      (message) => message.uid === selectedUid && (!selectedMessageSourceFolder || message.folder === selectedMessageSourceFolder)
+    ) ??
+    (messagesQuery.data?.messages ?? []).find((message) => message.uid === selectedUid) ??
+    null;
   const selectedMessageFolder = selectedMessageSourceFolder ?? selectedPreview?.folder ?? (activeFolder === "__STARRED__" ? "INBOX" : activeFolder);
 
   const selectedMessageQuery = useQuery({
@@ -784,6 +789,11 @@ export function MailDashboard({
                     if (item.label === "Labels") {
                       const nextState = !labelsOpen;
                       setLabelsOpen(nextState);
+                      if (nextState && labelFolders.length && !labelFolders.some((folder) => folder.path === activeFolder)) {
+                        setActiveFolder(labelFolders[0].path);
+                        setSelectedUid(null);
+                        setSelectedMessageSourceFolder(null);
+                      }
                       return;
                     }
                     if (targetFolder) {
