@@ -164,9 +164,15 @@ export default function App() {
     setRestoreError(null);
   };
 
+  const isLoggedIn = Boolean(authState);
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(25,119,255,0.26),_transparent_30%),linear-gradient(180deg,#eff5fc_0%,#dce9f9_42%,#eef4fc_100%)] px-4 py-8 text-surface-900 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1600px]">
+    <main
+      className={`min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(25,119,255,0.26),_transparent_30%),linear-gradient(180deg,#eff5fc_0%,#dce9f9_42%,#eef4fc_100%)] text-surface-900 ${
+        isLoggedIn ? "h-screen overflow-hidden" : "px-4 py-8 sm:px-6 lg:px-8"
+      }`}
+    >
+      <div className={isLoggedIn ? "h-full w-full" : "mx-auto max-w-[1600px]"}>
         {isRestoringAccount ? (
           <section className="rounded-[32px] border border-white/60 bg-white/80 p-10 text-center shadow-glow backdrop-blur">
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-brand-700">CitriCloud Mail Console</p>

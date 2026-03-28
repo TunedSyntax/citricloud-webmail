@@ -181,7 +181,7 @@ export function MailDashboard({
 
   return (
     <>
-      <section className="flex min-h-[840px] flex-col overflow-hidden rounded-[32px] border border-white/60 bg-white/80 shadow-glow backdrop-blur">
+      <section className="flex h-full min-h-screen flex-col overflow-hidden bg-white/80 shadow-glow backdrop-blur">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-surface-200 px-6 py-5">
         <div className="flex flex-col gap-1">
           <img src={logoUrl} alt="CitriCloud" className="h-8 w-auto" />
@@ -385,7 +385,7 @@ export function MailDashboard({
 
           <section className="bg-[linear-gradient(180deg,#f7fafe,#eef4fc)] p-6">
             {detail ? (
-              <article className="flex h-full flex-col rounded-[28px] border border-white/70 bg-white/85 p-6 shadow-panel backdrop-blur">
+              <article className="flex h-full flex-col bg-white/85 p-6 shadow-panel backdrop-blur">
                 <div className="flex items-start justify-between gap-6 border-b border-surface-200 pb-5">
                   <div>
                     <p className="text-sm font-semibold uppercase tracking-[0.22em] text-brand-700">Message detail</p>
@@ -410,7 +410,7 @@ export function MailDashboard({
                   </div>
                 </div>
 
-                <div className="mt-6 flex-1 overflow-auto rounded-3xl border border-surface-200 bg-surface-50 p-6 text-sm leading-7 text-surface-700">
+                <div className="mt-6 flex-1 overflow-auto bg-surface-50 p-6 text-sm leading-7 text-surface-700">
                   {detail.html ? (
                     <div dangerouslySetInnerHTML={{ __html: detail.html }} />
                   ) : (
@@ -419,7 +419,7 @@ export function MailDashboard({
                 </div>
               </article>
             ) : (
-              <div className="flex h-full items-center justify-center rounded-[28px] border border-dashed border-surface-300 bg-white/70 text-surface-500">
+              <div className="flex h-full items-center justify-center bg-white/70 text-surface-500">
                 Select a message to open the reading pane.
               </div>
             )}
