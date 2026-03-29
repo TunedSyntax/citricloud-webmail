@@ -410,11 +410,13 @@ export async function sendMessage(
 export function createFolder(session: MailSession, folder: string): Promise<void> {
   return withImapClient(session, async (client) => {
     await client.mailboxCreate(folder);
+    await client.mailboxSubscribe(folder);
   });
 }
 
 export function deleteFolder(session: MailSession, folder: string): Promise<void> {
   return withImapClient(session, async (client) => {
+    await client.mailboxUnsubscribe(folder).catch(() => undefined);
     await client.mailboxDelete(folder);
   });
 }

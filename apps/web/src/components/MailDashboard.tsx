@@ -17,6 +17,7 @@ import {
   PanelBottom,
   PanelRight,
   Paperclip,
+  Pencil,
   RefreshCcw,
   Reply,
   Search,
@@ -116,6 +117,7 @@ const LABEL_COLOR_PALETTE = [
 ] as const;
 
 const LABEL_ICONS = [Tag, Bookmark, Bell, Zap, Globe, Briefcase, Star, ShieldAlert] as const;
+const LABEL_ICON_NAMES = ["tag", "bookmark", "bell", "zap", "globe", "briefcase", "star", "shield"] as const;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -649,6 +651,70 @@ export function MailDashboard({
     setLabelsOpen(true);
   };
 
+  const promptEditUserLabel = (labelId: string) => {
+    const label = userLabels.find((item) => item.id === labelId);
+    if (!label) {
+      return;
+    }
+
+    const nextName = window.prompt("Edit label name", label.name)?.trim();
+    if (!nextName) {
+      return;
+    }
+
+    const iconHint = LABEL_ICON_NAMES.join(", ");
+    const nextIconName = window.prompt(`Edit label icon (${iconHint})`, LABEL_ICON_NAMES[label.iconIndex] ?? LABEL_ICON_NAMES[0])?.trim().toLowerCase();
+    if (!nextIconName) {
+      return;
+    }
+
+    const nextIconIndex = LABEL_ICON_NAMES.findIndex((iconName) => iconName === nextIconName);
+    if (nextIconIndex === -1) {
+      setActionError(`Unknown icon. Use one of: ${iconHint}.`);
+      return;
+    }
+
+    setUserLabels((current) =>
+      current.map((item) =>
+        item.id === labelId
+          ? {
+              ...item,
+              name: nextName,
+              iconIndex: nextIconIndex,
+              colorIndex: hashString(nextName) % LABEL_COLOR_PALETTE.length
+            }
+          : item
+      )
+    );
+    setActionError(null);
+  };
+
+  const deleteUserLabel = (labelId: string) => {
+    const label = userLabels.find((item) => item.id === labelId);
+    if (!label) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete label "${label.name}"?`);
+    if (!confirmed) {
+      return;
+    }
+
+    setUserLabels((current) => current.filter((item) => item.id !== labelId));
+    setMessageLabelAssignments((current) => {
+      const next: MessageLabelAssignments = {};
+      for (const [messageKey, labelIds] of Object.entries(current)) {
+        const filteredIds = labelIds.filter((item) => item !== labelId);
+        if (filteredIds.length) {
+          next[messageKey] = filteredIds;
+        }
+      }
+      return next;
+    });
+
+    setSelectedLabelId((current) => (current === labelId ? null : current));
+  };
+
   const assignLabelToMessages = (messages: MessagePreview[], labelId: string) => {
     if (!messages.length) {
       return;
@@ -852,13 +918,20 @@ export function MailDashboard({
   }, [activeFolder, archiveFolderPath, availableFolders, inboxFolderPath, spamFolderPath]);
 
   const activeFolderTitle = useMemo(() => {
+    if (selectedLabelId) {
+      const selectedLabel = userLabels.find((label) => label.id === selectedLabelId);
+      if (selectedLabel) {
+        return `Label: ${selectedLabel.name}`;
+      }
+    }
+
     if (activeFolder === "__STARRED__") {
       return "Starred";
     }
 
     const matched = availableFolders.find((folder) => folder.path === activeFolder);
     return matched?.name ?? activeFolder;
-  }, [activeFolder, availableFolders]);
+  }, [activeFolder, availableFolders, selectedLabelId, userLabels]);
 
   const openNewComposer = () => {
     setComposerDraft({
@@ -1246,11 +1319,15 @@ export function MailDashboard({
                     if (item.label === "Labels") {
                       const nextState = !labelsOpen;
                       setLabelsOpen(nextState);
+                      if (!nextState) {
+                        setSelectedLabelId(null);
+                      }
                       return;
                     }
                     if (targetFolder) {
                       setActiveFolder(targetFolder);
                     }
+                    setSelectedLabelId(null);
                     setLabelsOpen(false);
                     setSelectedUid(null);
                     setSelectedMessageSourceFolder(null);
@@ -1279,7 +1356,7 @@ export function MailDashboard({
           {labelsOpen ? (
             <div className="mt-2 border-t border-white/15 pt-2">
               <div className="mb-2 flex items-center justify-between px-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-100">Folder labels</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-100">Mail labels</p>
                 <button className="text-[11px] text-brand-100 hover:text-white" type="button" onClick={() => promptCreateUserLabel("NewLabel")}>Create</button>
               </div>
               <div className="space-y-2">
@@ -1289,20 +1366,44 @@ export function MailDashboard({
                     const LabelIcon = LABEL_ICONS[label.iconIndex % LABEL_ICONS.length];
                     const isActive = selectedLabelId === label.id;
                     return (
-                      <button
+                      <div
                         key={label.id}
                         className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm transition ${
                           isActive ? "bg-white text-brand-700" : "bg-white/5 text-white/80 hover:bg-white/10"
                         }`}
-                        type="button"
-                        onClick={() => {
-                          setSelectedLabelId((current) => (current === label.id ? null : label.id));
-                        }}
                       >
-                        <LabelIcon className={`h-4 w-4 shrink-0 ${isActive ? "text-brand-600" : labelColor.iconClass}`} />
-                        <span className="truncate">{label.name}</span>
-                        <span className={`ml-auto shrink-0 text-xs ${isActive ? "text-brand-500" : "text-white/60"}`}>{labelCounts[label.id] ?? 0}</span>
-                      </button>
+                        <button
+                          className="flex flex-1 items-center gap-3 truncate text-left"
+                          type="button"
+                          onClick={() => {
+                            setSelectedLabelId((current) => (current === label.id ? null : label.id));
+                          }}
+                        >
+                          <LabelIcon className={`h-4 w-4 shrink-0 ${isActive ? "text-brand-600" : labelColor.iconClass}`} />
+                          <span className="truncate">{label.name}</span>
+                          <span className={`ml-auto shrink-0 pr-1 text-xs ${isActive ? "text-brand-500" : "text-white/60"}`}>{labelCounts[label.id] ?? 0}</span>
+                        </button>
+                        <button
+                          className={`shrink-0 rounded-lg p-1 transition ${
+                            isActive ? "text-brand-400 hover:bg-brand-100 hover:text-brand-700" : "text-white/30 hover:bg-white/10 hover:text-white"
+                          }`}
+                          type="button"
+                          title={`Edit ${label.name}`}
+                          onClick={() => promptEditUserLabel(label.id)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          className={`shrink-0 rounded-lg p-1 transition ${
+                            isActive ? "text-brand-400 hover:bg-brand-100 hover:text-rose-600" : "text-white/30 hover:bg-white/10 hover:text-rose-300"
+                          }`}
+                          type="button"
+                          title={`Delete ${label.name}`}
+                          onClick={() => deleteUserLabel(label.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     );
                   })
                 ) : (
@@ -1346,6 +1447,7 @@ export function MailDashboard({
                         type="button"
                         onClick={() => {
                           setActiveFolder(folder.path);
+                          setSelectedLabelId(null);
                           setSelectedUid(null);
                           setSelectedMessageSourceFolder(null);
                         }}
