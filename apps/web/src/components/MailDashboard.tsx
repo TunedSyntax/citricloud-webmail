@@ -533,8 +533,11 @@ export function MailDashboard({
 
       return { previousMessages, previousDetail, previousStarred };
     },
-    onSuccess: () => {
+    onSuccess: (_data, payload) => {
       setActionError(null);
+      if (payload.flagged !== undefined) {
+        void queryClient.invalidateQueries({ queryKey: ["messages", session.token, "__STARRED__"] });
+      }
     },
     onError: (error: Error, _variables, context) => {
       setActionError(error.message || "Unable to update message state.");
@@ -2144,7 +2147,7 @@ export function MailDashboard({
                       <button
                         className="rounded-lg border border-surface-300 bg-white p-2 text-surface-700 transition hover:bg-surface-50"
                         type="button"
-                        onClick={() => deleteSelectedMessage()}
+                        onClick={() => deleteSelectedMessage({ folder: selectedMessageFolder, uid: selectedUid as number })}
                         title="Delete"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -2152,7 +2155,7 @@ export function MailDashboard({
                       <button
                         className="rounded-lg border border-surface-300 bg-white p-2 text-surface-700 transition hover:bg-surface-50"
                         type="button"
-                        onClick={() => moveSelectedMessage(archiveFolderPath)}
+                        onClick={() => moveSelectedMessage(archiveFolderPath ?? null, { folder: selectedMessageFolder, uid: selectedUid as number })}
                         disabled={!archiveFolderPath}
                         title="Archive"
                       >
@@ -2161,14 +2164,14 @@ export function MailDashboard({
                       <button
                         className="rounded-lg border border-surface-300 bg-white p-2 text-surface-700 transition hover:bg-surface-50"
                         type="button"
-                        onClick={() => moveSelectedMessage(spamFolderPath)}
+                        onClick={() => moveSelectedMessage(spamFolderPath ?? null, { folder: selectedMessageFolder, uid: selectedUid as number })}
                         disabled={!spamFolderPath}
                         title="Mark as Spam"
                       >
                         <Flag className="h-4 w-4" />
                       </button>
                       <button
-                        className={`rounded-lg border transition ${detail.flagged ? "border-amber-300 bg-amber-50" : "border-surface-300 bg-white hover:bg-surface-50"}`}
+                        className={`rounded-lg border p-2 transition ${detail.flagged ? "border-amber-300 bg-amber-50" : "border-surface-300 bg-white hover:bg-surface-50"}`}
                         type="button"
                         onClick={() => updateMessageState({ folder: selectedMessageFolder, uid: selectedUid as number, flagged: !detail.flagged })}
                         title="Star"
