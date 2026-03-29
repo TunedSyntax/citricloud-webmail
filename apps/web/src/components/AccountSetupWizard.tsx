@@ -156,6 +156,10 @@ export function AccountSetupWizard({
         </div>
 
         <div className="rounded-[28px] border border-surface-200 bg-white p-6 shadow-panel">
+          <div className="rounded-2xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-800">
+            Welcome back to CitriCloud Webmail. Sign in to continue with your mailbox operations.
+          </div>
+
           <div className="space-y-1">
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-brand-700">Connect mailbox</p>
             <h2 className="font-display text-2xl font-semibold text-surface-900">Server-aware account onboarding</h2>
