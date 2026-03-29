@@ -1947,8 +1947,10 @@ export function MailDashboard({
                     onContextMenu={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      setSelectedUid(message.uid);
-                      setSelectedMessageSourceFolder(message.folder);
+                      if (!isListPane) {
+                        setSelectedUid(message.uid);
+                        setSelectedMessageSourceFolder(message.folder);
+                      }
                       setContextMenu({
                         x: event.clientX,
                         y: event.clientY,
@@ -1991,7 +1993,7 @@ export function MailDashboard({
                           }
                         }}
                       >
-                        <Star className={`h-3.5 w-3.5 shrink-0 ${message.flagged ? "fill-amber-400 text-amber-500" : "text-surface-300"}`} />
+                        <Star className={`h-3.5 w-3.5 shrink-0 ${message.flagged ? "fill-amber-400 text-amber-500" : "text-surface-500"}`} />
                       </button>
                     </div>
                     <div className="min-w-0 flex-1">
