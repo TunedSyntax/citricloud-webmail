@@ -2,11 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Archive,
+  Bell,
+  Bookmark,
+  Briefcase,
   Check,
   CheckSquare,
   CirclePlus,
   ChevronDown,
   FolderPlus,
+  Globe,
   Inbox,
   LayoutPanelTop,
   LogOut,
@@ -20,9 +24,11 @@ import {
   ShieldAlert,
   Square,
   Star,
+  Tag,
   Tags,
   Trash2,
-  UserCircle2
+  UserCircle2,
+  Zap
 } from "lucide-react";
 
 import {
@@ -77,6 +83,28 @@ const listWidthStorageKey = "citricloud-webmail.list-width";
 const bottomPaneHeightStorageKey = "citricloud-webmail.bottom-pane-height";
 const readingPaneStorageKey = "citricloud-webmail.reading-pane";
 const compactBreakpoint = 1024;
+
+function hashString(str: string): number {
+  let hash = 0;
+  for (let index = 0; index < str.length; index += 1) {
+    hash = (hash << 5) - hash + str.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+const LABEL_COLOR_PALETTE = [
+  { iconClass: "text-rose-400",    activeClass: "bg-rose-400/20" },
+  { iconClass: "text-amber-400",   activeClass: "bg-amber-400/20" },
+  { iconClass: "text-emerald-400", activeClass: "bg-emerald-400/20" },
+  { iconClass: "text-sky-400",     activeClass: "bg-sky-400/20" },
+  { iconClass: "text-violet-400",  activeClass: "bg-violet-400/20" },
+  { iconClass: "text-pink-400",    activeClass: "bg-pink-400/20" },
+  { iconClass: "text-orange-400",  activeClass: "bg-orange-400/20" },
+  { iconClass: "text-teal-400",    activeClass: "bg-teal-400/20" },
+] as const;
+
+const LABEL_ICONS = [Tag, Bookmark, Bell, Zap, Globe, Briefcase, Star, ShieldAlert] as const;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -1091,10 +1119,18 @@ export function MailDashboard({
               </div>
               <div className="space-y-1">
                 {labelFolders.length ? (
-                  labelFolders.map((folder) => (
+                  labelFolders.map((folder) => {
+                    const colorIndex = hashString(folder.name) % LABEL_COLOR_PALETTE.length;
+                    const labelColor = LABEL_COLOR_PALETTE[colorIndex];
+                    const LabelIcon = LABEL_ICONS[colorIndex % LABEL_ICONS.length];
+                    return (
                     <button
                       key={folder.path}
-                      className={`w-full truncate px-2 py-1 text-left text-xs ${activeFolder === folder.path ? "bg-white/20 text-white" : "text-white/80 hover:bg-white/10"}`}
+                      className={`flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-xs transition ${
+                        activeFolder === folder.path
+                          ? `${labelColor.activeClass} text-white`
+                          : "text-white/80 hover:bg-white/10"
+                      }`}
                       type="button"
                       onClick={() => {
                         setActiveFolder(folder.path);
@@ -1116,9 +1152,11 @@ export function MailDashboard({
                         void dropSelectedToFolder(folder.path);
                       }}
                     >
-                      {folder.name}
+                      <LabelIcon className={`h-3.5 w-3.5 shrink-0 ${labelColor.iconClass}`} />
+                      <span className="truncate">{folder.name}</span>
                     </button>
-                  ))
+                    );
+                  })
                 ) : (
                   <p className="px-2 py-1 text-xs text-white/70">No labels yet. Create one.</p>
                 )}
@@ -1379,11 +1417,11 @@ export function MailDashboard({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-xs font-medium text-surface-700">{message.from}</p>
+                      <p className={`truncate text-xs text-surface-700 ${message.unread ? "font-medium" : "font-normal"}`}>{message.from}</p>
                       <p className="shrink-0 text-xs text-surface-500">{message.date ? new Date(message.date).toLocaleDateString() : "Now"}</p>
                     </div>
                     <div className="mt-0.5 flex items-start gap-1.5">
-                      <p className="break-words text-sm font-semibold leading-5 text-surface-900">{message.subject}</p>
+                      <p className={`break-words text-sm leading-5 text-surface-900 ${message.unread ? "font-semibold" : "font-normal"}`}>{message.subject}</p>
                       {message.hasAttachments ? <Paperclip className="mt-0.5 h-3 w-3 shrink-0 text-surface-500" /> : null}
                     </div>
                   </div>
