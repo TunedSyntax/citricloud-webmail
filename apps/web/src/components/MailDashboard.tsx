@@ -1121,113 +1121,133 @@ export function MailDashboard({
 
           {labelsOpen ? (
             <div className="mt-2 border-t border-white/15 pt-2">
-              <div className="mb-2 flex items-center justify-between px-2">
+              <div className="mb-2 flex items-center justify-between px-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-100">Folder labels</p>
                 <button className="text-[11px] text-brand-100 hover:text-white" type="button" onClick={() => promptCreateFolder("NewLabel")}>Create</button>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {labelFolders.length ? (
                   labelFolders.map((folder) => {
                     const colorIndex = hashString(folder.name) % LABEL_COLOR_PALETTE.length;
                     const labelColor = LABEL_COLOR_PALETTE[colorIndex];
                     const LabelIcon = LABEL_ICONS[colorIndex % LABEL_ICONS.length];
+                    const isActive = activeFolder === folder.path;
                     return (
-                    <button
-                      key={folder.path}
-                      className={`flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-xs transition ${
-                        activeFolder === folder.path
-                          ? `${labelColor.activeClass} text-white`
-                          : "text-white/80 hover:bg-white/10"
-                      }`}
-                      type="button"
-                      onClick={() => {
-                        setActiveFolder(folder.path);
-                        setLabelsOpen(true);
-                        setSelectedUid(null);
-                        setSelectedMessageSourceFolder(null);
-                      }}
-                      onDragOver={(event) => {
-                        if (!dragMoveMode) {
-                          return;
-                        }
-                        event.preventDefault();
-                      }}
-                      onDrop={(event) => {
-                        if (!dragMoveMode) {
-                          return;
-                        }
-                        event.preventDefault();
-                        void dropSelectedToFolder(folder.path);
-                      }}
-                    >
-                      <LabelIcon className={`h-3.5 w-3.5 shrink-0 ${labelColor.iconClass}`} />
-                      <span className="truncate">{folder.name}</span>
-                    </button>
+                      <button
+                        key={folder.path}
+                        className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm transition ${
+                          isActive ? "bg-white text-brand-700" : "bg-white/5 text-white/80 hover:bg-white/10"
+                        }`}
+                        type="button"
+                        onClick={() => {
+                          setActiveFolder(folder.path);
+                          setLabelsOpen(true);
+                          setSelectedUid(null);
+                          setSelectedMessageSourceFolder(null);
+                        }}
+                        onDragOver={(event) => {
+                          if (!dragMoveMode) {
+                            return;
+                          }
+                          event.preventDefault();
+                        }}
+                        onDrop={(event) => {
+                          if (!dragMoveMode) {
+                            return;
+                          }
+                          event.preventDefault();
+                          void dropSelectedToFolder(folder.path);
+                        }}
+                      >
+                        <LabelIcon className={`h-4 w-4 shrink-0 ${isActive ? "text-brand-600" : labelColor.iconClass}`} />
+                        <span className="truncate">{folder.name}</span>
+                      </button>
                     );
                   })
                 ) : (
-                  <p className="px-2 py-1 text-xs text-white/70">No labels yet. Create one.</p>
+                  <div className="flex w-full items-center gap-3 rounded-2xl bg-white/5 px-4 py-3 text-sm text-white/40">
+                    <Tag className="h-4 w-4 shrink-0" />
+                    No labels yet. Create one.
+                  </div>
                 )}
               </div>
             </div>
           ) : null}
 
           <div className="mt-3 border-t border-white/15 pt-2">
-            <div className="mb-2 flex items-center justify-between px-2">
+            <div className="mb-2 flex items-center justify-between px-4">
               <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-100">IMAP folders (custom)</p>
               <div className="flex items-center gap-2">
-                <button className="text-[11px] text-brand-100 hover:text-white" type="button" onClick={() => promptCreateFolder()}>
+                <button className="text-brand-100 hover:text-white" type="button" title="Create folder" onClick={() => promptCreateFolder()}>
                   <FolderPlus className="h-3.5 w-3.5" />
                 </button>
-                <button className="text-[11px] text-brand-100 hover:text-white" type="button" onClick={runFolderSync}>
+                <button className="text-brand-100 hover:text-white" type="button" title="Sync folders" onClick={runFolderSync}>
                   <RefreshCcw className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-2">
               {customImapFolders.length ? (
-                customImapFolders.map((folder) => (
-                  <div key={folder.path} className="flex items-center gap-1">
-                    <button
-                      className={`flex-1 truncate px-2 py-1 text-left text-xs ${activeFolder === folder.path ? "bg-white/20 text-white" : "text-white/80 hover:bg-white/10"}`}
-                      type="button"
-                      onClick={() => {
-                        setActiveFolder(folder.path);
-                        setSelectedUid(null);
-                        setSelectedMessageSourceFolder(null);
-                      }}
-                      onDragOver={(event) => {
-                        if (!dragMoveMode) {
-                          return;
-                        }
-                        event.preventDefault();
-                      }}
-                      onDrop={(event) => {
-                        if (!dragMoveMode) {
-                          return;
-                        }
-                        event.preventDefault();
-                        void dropSelectedToFolder(folder.path);
-                      }}
+                customImapFolders.map((folder) => {
+                  const colorIndex = hashString(folder.name) % LABEL_COLOR_PALETTE.length;
+                  const labelColor = LABEL_COLOR_PALETTE[colorIndex];
+                  const LabelIcon = LABEL_ICONS[colorIndex % LABEL_ICONS.length];
+                  const isActive = activeFolder === folder.path;
+                  return (
+                    <div
+                      key={folder.path}
+                      className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm transition ${
+                        isActive ? "bg-white text-brand-700" : "bg-white/5 text-white/80 hover:bg-white/10"
+                      }`}
                     >
-                      {folder.name}
-                    </button>
-                    <button
-                      className="rounded px-1 py-0.5 text-[10px] text-rose-200 hover:bg-rose-500/30 hover:text-white"
-                      type="button"
-                      onClick={() => {
-                        const confirmed = window.confirm(`Delete folder ${folder.name}?`);
-                        if (confirmed) {
-                          deleteFolderMutation.mutate(folder.path);
-                        }
-                      }}
-                    >
-                      x
-                    </button>
-                  </div>
-                ))
+                      <button
+                        className="flex flex-1 items-center gap-3 truncate text-left"
+                        type="button"
+                        onClick={() => {
+                          setActiveFolder(folder.path);
+                          setSelectedUid(null);
+                          setSelectedMessageSourceFolder(null);
+                        }}
+                        onDragOver={(event) => {
+                          if (!dragMoveMode) {
+                            return;
+                          }
+                          event.preventDefault();
+                        }}
+                        onDrop={(event) => {
+                          if (!dragMoveMode) {
+                            return;
+                          }
+                          event.preventDefault();
+                          void dropSelectedToFolder(folder.path);
+                        }}
+                      >
+                        <LabelIcon className={`h-4 w-4 shrink-0 ${isActive ? "text-brand-600" : labelColor.iconClass}`} />
+                        <span className="truncate">{folder.name}</span>
+                      </button>
+                      <button
+                        className={`shrink-0 rounded-lg p-1 transition ${
+                          isActive ? "text-brand-400 hover:bg-brand-100 hover:text-rose-600" : "text-white/30 hover:bg-white/10 hover:text-rose-300"
+                        }`}
+                        type="button"
+                        title={`Delete ${folder.name}`}
+                        onClick={() => {
+                          const confirmed = window.confirm(`Delete folder "${folder.name}"?`);
+                          if (confirmed) {
+                            deleteFolderMutation.mutate(folder.path);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })
               ) : (
-                <p className="px-2 py-1 text-xs text-white/70">No custom folders yet.</p>
+                <div className="flex w-full items-center gap-3 rounded-2xl bg-white/5 px-4 py-3 text-sm text-white/40">
+                  <FolderPlus className="h-4 w-4 shrink-0" />
+                  No custom folders yet.
+                </div>
               )}
             </div>
           </div>
