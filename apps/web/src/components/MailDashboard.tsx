@@ -187,7 +187,13 @@ function readStoredPane() {
   }
 
   const value = window.localStorage.getItem(readingPaneStorageKey);
-  return value === "bottom" ? "bottom" : "right";
+  if (value === "bottom") {
+    return "bottom" as const;
+  }
+  if (value === "list") {
+    return "list" as const;
+  }
+  return "right" as const;
 }
 
 function buildReplyBody(detail: MessageDetail): string {
@@ -322,7 +328,7 @@ export function MailDashboard({
   const [activeFolder, setActiveFolder] = useState(initialFolders[0]?.path ?? "INBOX");
   const [selectedUid, setSelectedUid] = useState<number | null>(null);
   const [searchText, setSearchText] = useState("");
-  const [readingPane, setReadingPane] = useState<"right" | "bottom">(() => readStoredPane());
+  const [readingPane, setReadingPane] = useState<"right" | "bottom" | "list">(() => readStoredPane());
   const [sidebarWidth, setSidebarWidth] = useState(() => readStoredNumber(sidebarWidthStorageKey, 272, 240, 420));
   const [listWidth, setListWidth] = useState(() => readStoredNumber(listWidthStorageKey, 340, 280, 620));
   const [bottomPaneHeight, setBottomPaneHeight] = useState(() => readStoredNumber(bottomPaneHeightStorageKey, 320, 220, 640));
@@ -331,9 +337,9 @@ export function MailDashboard({
   const [isCompactViewport, setIsCompactViewport] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [filterUnread, setFilterUnread] = useState(false);
-  const [dateRange, setDateRange] = useState<"all" | "today" | "7d" | "30d">("all");
+  const [dateRange, setDateRange] = useState<"all" | "7d" | "30d">("all");
   const [categoryFilter, setCategoryFilter] = useState<"all" | "ops" | "security" | "billing">("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "unread" | "flagged">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "read" | "unread" | "flagged">("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [userLabels, setUserLabels] = useState<UserLabel[]>([]);
@@ -555,12 +561,16 @@ export function MailDashboard({
   });
 
   useEffect(() => {
+    if (readingPane === "list") {
+      return;
+    }
+
     if (messagesQuery.data?.messages.length && selectedUid === null) {
       const firstMessage = messagesQuery.data.messages[0];
       setSelectedUid(firstMessage.uid);
       setSelectedMessageSourceFolder(firstMessage.folder);
     }
-  }, [messagesQuery.data, selectedUid]);
+  }, [messagesQuery.data, readingPane, selectedUid]);
 
   useEffect(() => {
     if (!selectedPreview) {
@@ -967,6 +977,10 @@ export function MailDashboard({
         return false;
       }
 
+      if (statusFilter === "read" && message.unread) {
+        return false;
+      }
+
       if (statusFilter === "unread" && !message.unread) {
         return false;
       }
@@ -986,14 +1000,6 @@ export function MailDashboard({
 
         const messageDate = new Date(message.date).getTime();
         const ageMs = now - messageDate;
-
-        if (dateRange === "today") {
-          const startOfToday = new Date();
-          startOfToday.setHours(0, 0, 0, 0);
-          if (messageDate < startOfToday.getTime()) {
-            return false;
-          }
-        }
 
         if (dateRange === "7d" && ageMs > 7 * 24 * 60 * 60 * 1000) {
           return false;
@@ -1351,6 +1357,7 @@ export function MailDashboard({
   };
 
   const isRightPane = readingPane === "right";
+  const isListPane = readingPane === "list";
   const allowDesktopResize = !isCompactViewport;
 
   return (
@@ -1375,11 +1382,11 @@ export function MailDashboard({
           <div className="relative">
             <button
               className="inline-flex items-center rounded-2xl border border-brand-200 bg-white p-2.5 text-brand-700"
-              title={readingPane === "right" ? "Right pane view" : "Bottom pane view"}
+              title={readingPane === "right" ? "Right pane view" : readingPane === "bottom" ? "Bottom pane view" : "List view"}
               type="button"
               onClick={() => setPaneMenuOpen((current) => !current)}
             >
-              {readingPane === "right" ? <PanelRight className="h-4 w-4" /> : <PanelBottom className="h-4 w-4" />}
+              {readingPane === "right" ? <PanelRight className="h-4 w-4" /> : readingPane === "bottom" ? <PanelBottom className="h-4 w-4" /> : <LayoutPanelTop className="h-4 w-4" />}
             </button>
 
             {paneMenuOpen ? (
@@ -1409,6 +1416,19 @@ export function MailDashboard({
                     <PanelBottom className="h-4 w-4 text-brand-600" /> Bottom view
                   </span>
                   {readingPane === "bottom" ? <Check className="h-4 w-4 text-brand-600" /> : null}
+                </button>
+                <button
+                  className="mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-surface-700 hover:bg-surface-50"
+                  type="button"
+                  onClick={() => {
+                    setReadingPane("list");
+                    setPaneMenuOpen(false);
+                  }}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <LayoutPanelTop className="h-4 w-4 text-brand-600" /> List view
+                  </span>
+                  {readingPane === "list" ? <Check className="h-4 w-4 text-brand-600" /> : null}
                 </button>
               </div>
             ) : null}
@@ -1729,16 +1749,18 @@ export function MailDashboard({
 
         <div
           ref={contentGridRef}
-          className={`grid min-h-0 ${isCompactViewport || !isRightPane ? "grid-rows-[320px_minmax(0,1fr)]" : ""}`}
+          className={`grid min-h-0 ${isListPane ? "" : isCompactViewport || !isRightPane ? "grid-rows-[320px_minmax(0,1fr)]" : ""}`}
           style={
-            !isCompactViewport && isRightPane
-              ? { gridTemplateColumns: `${listWidth}px minmax(0,1fr)` }
-              : !isCompactViewport && !isRightPane
-                ? { gridTemplateRows: `${bottomPaneHeight}px minmax(0,1fr)` }
-              : undefined
+            isListPane
+              ? undefined
+              : !isCompactViewport && isRightPane
+                ? { gridTemplateColumns: `${listWidth}px minmax(0,1fr)` }
+                : !isCompactViewport && !isRightPane
+                  ? { gridTemplateRows: `${bottomPaneHeight}px minmax(0,1fr)` }
+                  : undefined
           }
         >
-          <section className="relative flex min-h-0 flex-col border-r border-surface-200 bg-white">
+          <section className={`relative min-h-0 flex-col bg-white ${isListPane && selectedUid !== null ? "hidden" : "flex"} ${!isListPane ? "border-r border-surface-200" : ""}`}>
             <div className="flex items-center justify-between border-b border-surface-200 px-5 py-4">
               <div>
                 <p className="text-sm font-semibold text-surface-900">{activeFolderTitle}</p>
@@ -1836,38 +1858,48 @@ export function MailDashboard({
                 Advanced filters
                 <ChevronDown className={`h-3.5 w-3.5 transition ${filtersOpen ? "rotate-180" : "rotate-0"}`} />
               </button>
-              {filtersOpen ? <div className="flex flex-wrap gap-1.5">
-                {["all", "today", "7d", "30d"].map((value) => (
-                  <button
-                    key={`date-${value}`}
-                    className={`rounded-xl px-2 py-0.5 text-[11px] ${dateRange === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
-                    type="button"
-                    onClick={() => setDateRange(value as "all" | "today" | "7d" | "30d")}
-                  >
-                    {value === "all" ? "Date: All" : `Date: ${value}`}
-                  </button>
-                ))}
-                {["all", "ops", "security", "billing"].map((value) => (
-                  <button
-                    key={`cat-${value}`}
-                    className={`rounded-xl px-2 py-0.5 text-[11px] ${categoryFilter === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
-                    type="button"
-                    onClick={() => setCategoryFilter(value as "all" | "ops" | "security" | "billing")}
-                  >
-                    {value === "all" ? "Category: All" : `Category: ${value}`}
-                  </button>
-                ))}
-                {["all", "unread", "flagged"].map((value) => (
-                  <button
-                    key={`status-${value}`}
-                    className={`rounded-xl px-2 py-0.5 text-[11px] ${statusFilter === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
-                    type="button"
-                    onClick={() => setStatusFilter(value as "all" | "unread" | "flagged")}
-                  >
-                    {value === "all" ? "Status: All" : `Status: ${value}`}
-                  </button>
-                ))}
-              </div> : null}
+              {filtersOpen ? (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-500">Date</span>
+                    <select
+                      className="rounded-xl border border-brand-200 bg-white px-2.5 py-1.5 text-xs text-brand-700 outline-none"
+                      value={dateRange}
+                      onChange={(event) => setDateRange(event.target.value as "all" | "7d" | "30d")}
+                    >
+                      <option value="all">Date: All</option>
+                      <option value="7d">Date: 7d</option>
+                      <option value="30d">Date: 30d</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-500">Category</span>
+                    <select
+                      className="rounded-xl border border-brand-200 bg-white px-2.5 py-1.5 text-xs text-brand-700 outline-none"
+                      value={categoryFilter}
+                      onChange={(event) => setCategoryFilter(event.target.value as "all" | "ops" | "security" | "billing")}
+                    >
+                      <option value="all">Category: All</option>
+                      <option value="ops">Category: ops</option>
+                      <option value="security">Category: security</option>
+                      <option value="billing">Category: billing</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-500">Status</span>
+                    <select
+                      className="rounded-xl border border-brand-200 bg-white px-2.5 py-1.5 text-xs text-brand-700 outline-none"
+                      value={statusFilter}
+                      onChange={(event) => setStatusFilter(event.target.value as "all" | "read" | "unread" | "flagged")}
+                    >
+                      <option value="all">Status: All</option>
+                      <option value="read">Status: read (new)</option>
+                      <option value="unread">Status: unread</option>
+                      <option value="flagged">Status: flagged</option>
+                    </select>
+                  </label>
+                </div>
+              ) : null}
             </div>
 
             <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto hide-scrollbar" onScroll={handleListScroll}>
@@ -1884,7 +1916,7 @@ export function MailDashboard({
                 return (
                   <div
                     key={message.uid}
-                    className={`flex h-[72px] w-full items-center gap-2 border-b border-surface-100 px-3 py-2 text-left transition hover:bg-brand-50 ${
+                    className={`group flex h-[72px] w-full items-center gap-2 border-b border-surface-100 px-3 py-2 text-left transition hover:bg-brand-50 ${
                       selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || selectedUid === message.uid ? "bg-brand-50" : "bg-white"
                     }`}
                     role="button"
@@ -1944,7 +1976,7 @@ export function MailDashboard({
                     <div className="flex items-center gap-1">
                       <div className={`h-2.5 w-2.5 rounded-full ${message.unread ? "bg-brand-600" : "bg-surface-200"}`} />
                       <button
-                        className="rounded p-0.5"
+                        className={`rounded p-0.5 transition-opacity ${message.flagged ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
@@ -1998,7 +2030,7 @@ export function MailDashboard({
               />
             ) : null}
 
-            {!isRightPane && allowDesktopResize ? (
+            {readingPane === "bottom" && allowDesktopResize ? (
               <button
                 aria-label="Resize bottom pane"
                 className="absolute bottom-[-3px] left-0 z-10 h-1.5 w-full cursor-row-resize bg-brand-200/30 transition hover:bg-brand-300/70"
@@ -2008,9 +2040,25 @@ export function MailDashboard({
             ) : null}
           </section>
 
+          {!isListPane || selectedUid !== null ? (
           <section className="min-h-0 bg-[linear-gradient(180deg,#f7fafe,#eef4fc)] p-6">
             {detail ? (
               <article className="flex h-full min-h-0 flex-col bg-white/85 p-6 shadow-panel backdrop-blur">
+                {isListPane ? (
+                  <div className="mb-4">
+                    <button
+                      className="inline-flex items-center gap-2 rounded-xl border border-brand-200 bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+                      type="button"
+                      onClick={() => {
+                        setSelectedUid(null);
+                        setSelectedMessageSourceFolder(null);
+                      }}
+                    >
+                      <ChevronDown className="h-3.5 w-3.5 rotate-90" />
+                      Back to list
+                    </button>
+                  </div>
+                ) : null}
                 <div className="flex items-start justify-between gap-3 border-b border-surface-200 pb-5">
                   <div className="min-w-0 flex-1 pr-2">
                     <h3 className="mt-1 break-words text-xl font-semibold leading-tight text-surface-900 sm:text-2xl">{detail.subject}</h3>
@@ -2077,6 +2125,7 @@ export function MailDashboard({
               </div>
             )}
           </section>
+          ) : null}
         </div>
       </div>
 
