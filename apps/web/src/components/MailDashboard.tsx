@@ -77,6 +77,13 @@ type UserLabel = {
 
 type MessageLabelAssignments = Record<string, string[]>;
 
+type LabelEditorState = {
+  mode: "create" | "edit";
+  labelId: string | null;
+  name: string;
+  iconIndex: number;
+};
+
 const sidebarItems = [
   { label: "Inbox", icon: Inbox, fallback: "INBOX" },
   { label: "Starred", icon: Star, fallback: "__STARRED__" },
@@ -265,6 +272,7 @@ export function MailDashboard({
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [userLabels, setUserLabels] = useState<UserLabel[]>([]);
   const [messageLabelAssignments, setMessageLabelAssignments] = useState<MessageLabelAssignments>({});
+  const [labelEditor, setLabelEditor] = useState<LabelEditorState | null>(null);
   const [composerDraft, setComposerDraft] = useState<ComposeDraft | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: MessagePreview } | null>(null);
@@ -641,51 +649,78 @@ export function MailDashboard({
     return newLabel;
   };
 
-  const promptCreateUserLabel = (defaultName = "") => {
-    const name = window.prompt("Enter label name", defaultName)?.trim();
-    if (!name) {
-      return;
-    }
-
-    createUserLabel(name);
+  const openCreateUserLabelEditor = (defaultName = "") => {
+    const hash = hashString(defaultName || String(Date.now()));
+    setLabelEditor({
+      mode: "create",
+      labelId: null,
+      name: defaultName,
+      iconIndex: hash % LABEL_ICONS.length
+    });
     setLabelsOpen(true);
   };
 
-  const promptEditUserLabel = (labelId: string) => {
+  const openEditUserLabelEditor = (labelId: string) => {
     const label = userLabels.find((item) => item.id === labelId);
     if (!label) {
       return;
     }
 
-    const nextName = window.prompt("Edit label name", label.name)?.trim();
+    setLabelEditor({
+      mode: "edit",
+      labelId,
+      name: label.name,
+      iconIndex: label.iconIndex
+    });
+  };
+
+  const saveLabelEditor = () => {
+    if (!labelEditor) {
+      return;
+    }
+
+    const nextName = labelEditor.name.trim();
     if (!nextName) {
+      setActionError("Label name is required.");
       return;
     }
 
-    const iconHint = LABEL_ICON_NAMES.join(", ");
-    const nextIconName = window.prompt(`Edit label icon (${iconHint})`, LABEL_ICON_NAMES[label.iconIndex] ?? LABEL_ICON_NAMES[0])?.trim().toLowerCase();
-    if (!nextIconName) {
-      return;
-    }
+    if (labelEditor.mode === "create") {
+      const existing = userLabels.find((label) => label.name.toLowerCase() === nextName.toLowerCase());
+      if (existing) {
+        setSelectedLabelId(existing.id);
+        setLabelEditor(null);
+        setActionError(null);
+        return;
+      }
 
-    const nextIconIndex = LABEL_ICON_NAMES.findIndex((iconName) => iconName === nextIconName);
-    if (nextIconIndex === -1) {
-      setActionError(`Unknown icon. Use one of: ${iconHint}.`);
+      const hash = hashString(nextName);
+      const newLabel: UserLabel = {
+        id: `${Date.now()}-${hash}`,
+        name: nextName,
+        colorIndex: hash % LABEL_COLOR_PALETTE.length,
+        iconIndex: labelEditor.iconIndex % LABEL_ICONS.length
+      };
+      setUserLabels((current) => [...current, newLabel]);
+      setSelectedLabelId(newLabel.id);
+      setLabelEditor(null);
+      setActionError(null);
       return;
     }
 
     setUserLabels((current) =>
       current.map((item) =>
-        item.id === labelId
+        item.id === labelEditor.labelId
           ? {
               ...item,
               name: nextName,
-              iconIndex: nextIconIndex,
+              iconIndex: labelEditor.iconIndex % LABEL_ICONS.length,
               colorIndex: hashString(nextName) % LABEL_COLOR_PALETTE.length
             }
           : item
       )
     );
+    setLabelEditor(null);
     setActionError(null);
   };
 
@@ -1361,7 +1396,7 @@ export function MailDashboard({
             <div className="mt-2 border-t border-white/15 pt-2">
               <div className="mb-2 flex items-center justify-between px-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-100">Mail labels</p>
-                <button className="text-[11px] text-brand-100 hover:text-white" type="button" onClick={() => promptCreateUserLabel("NewLabel")}>Create</button>
+                <button className="text-[11px] text-brand-100 hover:text-white" type="button" onClick={() => openCreateUserLabelEditor("NewLabel")}>Create</button>
               </div>
               <div className="space-y-2">
                 {userLabels.length ? (
@@ -1393,7 +1428,7 @@ export function MailDashboard({
                           }`}
                           type="button"
                           title={`Edit ${label.name}`}
-                          onClick={() => promptEditUserLabel(label.id)}
+                          onClick={() => openEditUserLabelEditor(label.id)}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
@@ -1962,6 +1997,96 @@ export function MailDashboard({
             >
               Clear Labels
             </button>
+          </div>
+        </>
+      ) : null}
+
+      {labelEditor ? (
+        <>
+          <div className="fixed inset-0 z-40 bg-surface-900/35 backdrop-blur-sm" onMouseDown={() => setLabelEditor(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-lg rounded-[28px] border border-surface-200 bg-white p-6 shadow-panel"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-500">Mail Labels</p>
+                  <h3 className="mt-2 text-xl font-semibold text-surface-900">
+                    {labelEditor.mode === "create" ? "Create label" : "Edit label"}
+                  </h3>
+                  <p className="mt-1 text-sm text-surface-500">Choose a name and icon for this label badge.</p>
+                </div>
+                <button
+                  className="rounded-xl border border-surface-200 px-3 py-2 text-sm text-surface-500 hover:bg-surface-50"
+                  type="button"
+                  onClick={() => setLabelEditor(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <div className="mt-6 space-y-5">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-surface-700" htmlFor="label-editor-name">
+                    Label name
+                  </label>
+                  <input
+                    id="label-editor-name"
+                    className="w-full rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none transition focus:border-brand-300 focus:bg-white"
+                    value={labelEditor.name}
+                    onChange={(event) =>
+                      setLabelEditor((current) => (current ? { ...current, name: event.target.value } : current))
+                    }
+                    placeholder="Example: Google"
+                  />
+                </div>
+
+                <div>
+                  <p className="mb-3 text-sm font-medium text-surface-700">Choose icon</p>
+                  <div className="grid grid-cols-4 gap-3 sm:grid-cols-8">
+                    {LABEL_ICONS.map((Icon, index) => {
+                      const isActive = labelEditor.iconIndex === index;
+                      const color = LABEL_COLOR_PALETTE[index % LABEL_COLOR_PALETTE.length];
+                      return (
+                        <button
+                          key={LABEL_ICON_NAMES[index]}
+                          className={`flex flex-col items-center gap-2 rounded-2xl border px-3 py-3 text-xs transition ${
+                            isActive
+                              ? "border-brand-300 bg-brand-50 text-brand-700"
+                              : "border-surface-200 bg-white text-surface-500 hover:border-brand-200 hover:bg-surface-50"
+                          }`}
+                          type="button"
+                          onClick={() =>
+                            setLabelEditor((current) => (current ? { ...current, iconIndex: index } : current))
+                          }
+                        >
+                          <Icon className={`h-5 w-5 ${isActive ? "text-brand-600" : color.iconClass}`} />
+                          <span className="capitalize">{LABEL_ICON_NAMES[index]}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-3">
+                <button
+                  className="rounded-2xl border border-surface-200 px-4 py-2.5 text-sm font-medium text-surface-600 hover:bg-surface-50"
+                  type="button"
+                  onClick={() => setLabelEditor(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="rounded-2xl bg-brand-400 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+                  type="button"
+                  onClick={saveLabelEditor}
+                >
+                  {labelEditor.mode === "create" ? "Create label" : "Save changes"}
+                </button>
+              </div>
+            </div>
           </div>
         </>
       ) : null}
