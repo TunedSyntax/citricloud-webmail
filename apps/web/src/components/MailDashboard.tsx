@@ -1,28 +1,44 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
+  Bell,
+  Bookmark,
+  Briefcase,
+  CalendarDays,
   Check,
   CheckSquare,
   CirclePlus,
   ChevronDown,
+  Flag,
   FolderPlus,
+  Forward,
+  Globe,
+  Heart,
   Inbox,
   LayoutPanelTop,
+  Lightbulb,
   LogOut,
+  MapPin,
+  Megaphone,
+  MoreVertical,
   PanelBottom,
   PanelRight,
   Paperclip,
+  Pencil,
   RefreshCcw,
   Reply,
+  Rocket,
   Search,
   Send,
   ShieldAlert,
   Square,
   Star,
+  Tag,
   Tags,
   Trash2,
-  UserCircle2
+  UserCircle2,
+  Zap
 } from "lucide-react";
 
 import {
@@ -61,6 +77,22 @@ type MailDashboardProps = {
   onAddAccount: () => void;
 };
 
+type UserLabel = {
+  id: string;
+  name: string;
+  colorIndex: number;
+  iconIndex: number;
+};
+
+type MessageLabelAssignments = Record<string, string[]>;
+
+type LabelEditorState = {
+  mode: "create" | "edit";
+  labelId: string | null;
+  name: string;
+  iconIndex: number;
+};
+
 const sidebarItems = [
   { label: "Inbox", icon: Inbox, fallback: "INBOX" },
   { label: "Starred", icon: Star, fallback: "__STARRED__" },
@@ -76,7 +108,66 @@ const sidebarWidthStorageKey = "citricloud-webmail.sidebar-width";
 const listWidthStorageKey = "citricloud-webmail.list-width";
 const bottomPaneHeightStorageKey = "citricloud-webmail.bottom-pane-height";
 const readingPaneStorageKey = "citricloud-webmail.reading-pane";
+const userLabelsStorageKeyPrefix = "citricloud-webmail.user-labels";
+const messageLabelAssignmentsStorageKeyPrefix = "citricloud-webmail.message-label-assignments";
 const compactBreakpoint = 1024;
+
+function hashString(str: string): number {
+  let hash = 0;
+  for (let index = 0; index < str.length; index += 1) {
+    hash = (hash << 5) - hash + str.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+const LABEL_COLOR_PALETTE = [
+  { iconClass: "text-rose-400", badgeClass: "border-rose-200 bg-rose-50 text-rose-700" },
+  { iconClass: "text-amber-400", badgeClass: "border-amber-200 bg-amber-50 text-amber-700" },
+  { iconClass: "text-emerald-400", badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+  { iconClass: "text-sky-400", badgeClass: "border-sky-200 bg-sky-50 text-sky-700" },
+  { iconClass: "text-violet-400", badgeClass: "border-violet-200 bg-violet-50 text-violet-700" },
+  { iconClass: "text-pink-400", badgeClass: "border-pink-200 bg-pink-50 text-pink-700" },
+  { iconClass: "text-orange-400", badgeClass: "border-orange-200 bg-orange-50 text-orange-700" },
+  { iconClass: "text-teal-400", badgeClass: "border-teal-200 bg-teal-50 text-teal-700" },
+] as const;
+
+const LABEL_ICONS = [
+  Tag,
+  Bookmark,
+  Bell,
+  Zap,
+  Globe,
+  Briefcase,
+  Star,
+  ShieldAlert,
+  CalendarDays,
+  Flag,
+  Heart,
+  Lightbulb,
+  MapPin,
+  Megaphone,
+  Rocket,
+  Archive
+] as const;
+const LABEL_ICON_NAMES = [
+  "tag",
+  "bookmark",
+  "bell",
+  "zap",
+  "globe",
+  "briefcase",
+  "star",
+  "shield",
+  "calendar",
+  "flag",
+  "heart",
+  "idea",
+  "pin",
+  "announce",
+  "rocket",
+  "archive"
+] as const;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -98,7 +189,13 @@ function readStoredPane() {
   }
 
   const value = window.localStorage.getItem(readingPaneStorageKey);
-  return value === "bottom" ? "bottom" : "right";
+  if (value === "bottom") {
+    return "bottom" as const;
+  }
+  if (value === "list") {
+    return "list" as const;
+  }
+  return "right" as const;
 }
 
 function buildReplyBody(detail: MessageDetail): string {
@@ -182,6 +279,31 @@ function openAttachment(contentBase64: string, contentType: string, filename: st
   window.setTimeout(() => URL.revokeObjectURL(url), 5_000);
 }
 
+function playNotificationTone() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const audioContext = new window.AudioContext();
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+
+  gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.12, audioContext.currentTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.22);
+
+  oscillator.start();
+  oscillator.stop(audioContext.currentTime + 0.24);
+  oscillator.onended = () => {
+    void audioContext.close();
+  };
+}
+
 function resolveFolderPath(folders: MailFolder[], candidates: string[]) {
   const normalizedCandidates = candidates.map((candidate) => candidate.toLowerCase());
   const exactMatch = folders.find((folder) => normalizedCandidates.includes(folder.path.toLowerCase()) || normalizedCandidates.includes(folder.name.toLowerCase()));
@@ -208,7 +330,7 @@ export function MailDashboard({
   const [activeFolder, setActiveFolder] = useState(initialFolders[0]?.path ?? "INBOX");
   const [selectedUid, setSelectedUid] = useState<number | null>(null);
   const [searchText, setSearchText] = useState("");
-  const [readingPane, setReadingPane] = useState<"right" | "bottom">(() => readStoredPane());
+  const [readingPane, setReadingPane] = useState<"right" | "bottom" | "list">(() => readStoredPane());
   const [sidebarWidth, setSidebarWidth] = useState(() => readStoredNumber(sidebarWidthStorageKey, 272, 240, 420));
   const [listWidth, setListWidth] = useState(() => readStoredNumber(listWidthStorageKey, 340, 280, 620));
   const [bottomPaneHeight, setBottomPaneHeight] = useState(() => readStoredNumber(bottomPaneHeightStorageKey, 320, 220, 640));
@@ -217,12 +339,22 @@ export function MailDashboard({
   const [isCompactViewport, setIsCompactViewport] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [filterUnread, setFilterUnread] = useState(false);
-  const [dateRange, setDateRange] = useState<"all" | "today" | "7d" | "30d">("all");
+  const [dateRange, setDateRange] = useState<"all" | "7d" | "30d">("all");
   const [categoryFilter, setCategoryFilter] = useState<"all" | "ops" | "security" | "billing">("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "unread" | "flagged">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "read" | "unread" | "flagged">("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
+  const [userLabels, setUserLabels] = useState<UserLabel[]>([]);
+  const [messageLabelAssignments, setMessageLabelAssignments] = useState<MessageLabelAssignments>({});
+  const [labelEditor, setLabelEditor] = useState<LabelEditorState | null>(null);
+  const [missingLabelsModalOpen, setMissingLabelsModalOpen] = useState(false);
+  const [messageLimit, setMessageLimit] = useState(25);
+  const [selectMenuOpen, setSelectMenuOpen] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [composerDraft, setComposerDraft] = useState<ComposeDraft | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [messageHeaderMenuOpen, setMessageHeaderMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: MessagePreview } | null>(null);
   const [selectedMessageSourceFolder, setSelectedMessageSourceFolder] = useState<string | null>(null);
   const [selectedMessageKeys, setSelectedMessageKeys] = useState<Set<string>>(new Set());
@@ -232,16 +364,29 @@ export function MailDashboard({
   const gridRef = useRef<HTMLDivElement | null>(null);
   const contentGridRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const knownMessageKeysByFolderRef = useRef<Record<string, string[]>>({});
+  const queryClient = useQueryClient();
+  const userLabelsStorageKey = `${userLabelsStorageKeyPrefix}.${session.email.toLowerCase()}`;
+  const messageLabelAssignmentsStorageKey = `${messageLabelAssignmentsStorageKeyPrefix}.${session.email.toLowerCase()}`;
 
   const foldersQuery = useQuery({
     queryKey: ["folders", session.token],
     queryFn: () => getFolders(session.token),
-    initialData: { folders: initialFolders }
+    initialData: { folders: initialFolders },
+    staleTime: 0,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true
   });
 
   const messagesQuery = useQuery({
-    queryKey: ["messages", session.token, activeFolder],
-    queryFn: () => getMessages(session.token, activeFolder)
+    queryKey: ["messages", session.token, activeFolder, messageLimit],
+    queryFn: () => getMessages(session.token, activeFolder, messageLimit),
+    staleTime: 0,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true
   });
 
   const availableFolders = foldersQuery.data?.folders ?? initialFolders;
@@ -309,13 +454,102 @@ export function MailDashboard({
   const updateFlagsMutation = useMutation({
     mutationFn: (payload: { folder: string; uid: number; unread?: boolean; flagged?: boolean }) =>
       updateMessageFlagsRequest(session.token, payload),
-    onSuccess: () => {
-      messagesQuery.refetch();
-      selectedMessageQuery.refetch();
-      setActionError(null);
+    onMutate: async (payload) => {
+      await queryClient.cancelQueries({ queryKey: ["messages", session.token, activeFolder, messageLimit] });
+      await queryClient.cancelQueries({ queryKey: ["message", session.token, selectedMessageFolder, selectedUid] });
+      if (payload.flagged !== undefined && activeFolder !== "__STARRED__") {
+        await queryClient.cancelQueries({ queryKey: ["messages", session.token, "__STARRED__", messageLimit] });
+      }
+
+      const previousMessages = queryClient.getQueryData<{ messages: MessagePreview[] }>(["messages", session.token, activeFolder, messageLimit]);
+      const previousDetail = queryClient.getQueryData<{ message: MessageDetail }>(["message", session.token, selectedMessageFolder, selectedUid]);
+      const previousStarred = payload.flagged !== undefined && activeFolder !== "__STARRED__" 
+        ? queryClient.getQueryData<{ messages: MessagePreview[] }>(["messages", session.token, "__STARRED__", messageLimit])
+        : undefined;
+
+      queryClient.setQueryData<{ messages: MessagePreview[] }>(["messages", session.token, activeFolder, messageLimit], (current) => {
+        if (!current) {
+          return current;
+        }
+
+        // If unflagging in Starred folder, remove the message
+        if (activeFolder === "__STARRED__" && payload.flagged === false) {
+          return {
+            ...current,
+            messages: current.messages.filter((message) => !(message.uid === payload.uid && message.folder === payload.folder))
+          };
+        }
+
+        return {
+          ...current,
+          messages: current.messages.map((message) => {
+            if (message.uid !== payload.uid || message.folder !== payload.folder) {
+              return message;
+            }
+
+            return {
+              ...message,
+              unread: payload.unread ?? message.unread,
+              flagged: payload.flagged ?? message.flagged
+            };
+          })
+        };
+      });
+
+      // If flagging a message, also add it to Starred folder cache
+      if (payload.flagged === true && activeFolder !== "__STARRED__") {
+        const sourceMessage = (previousMessages?.messages ?? []).find((m) => m.uid === payload.uid && m.folder === payload.folder);
+        if (sourceMessage && previousStarred) {
+          queryClient.setQueryData<{ messages: MessagePreview[] }>(["messages", session.token, "__STARRED__", messageLimit], (current) => {
+            if (!current) {
+              return current;
+            }
+            const isDuplicate = current.messages.some((m) => m.uid === payload.uid && m.folder === payload.folder);
+            if (isDuplicate) {
+              return current;
+            }
+            return {
+              ...current,
+              messages: [{ ...sourceMessage, flagged: true }, ...current.messages].slice(0, messageLimit)
+            };
+          });
+        }
+      }
+
+      queryClient.setQueryData<{ message: MessageDetail }>(["message", session.token, selectedMessageFolder, selectedUid], (current) => {
+        if (!current || current.message.uid !== payload.uid) {
+          return current;
+        }
+
+        return {
+          ...current,
+          message: {
+            ...current.message,
+            unread: payload.unread ?? current.message.unread,
+            flagged: payload.flagged ?? current.message.flagged
+          }
+        };
+      });
+
+      return { previousMessages, previousDetail, previousStarred };
     },
-    onError: (error: Error) => {
+    onSuccess: (_data, payload) => {
+      setActionError(null);
+      if (payload.flagged !== undefined) {
+        void queryClient.invalidateQueries({ queryKey: ["messages", session.token, "__STARRED__"] });
+      }
+    },
+    onError: (error: Error, _variables, context) => {
       setActionError(error.message || "Unable to update message state.");
+      if (context?.previousMessages) {
+        queryClient.setQueryData(["messages", session.token, activeFolder, messageLimit], context.previousMessages);
+      }
+      if (context?.previousDetail) {
+        queryClient.setQueryData(["message", session.token, selectedMessageFolder, selectedUid], context.previousDetail);
+      }
+      if (context?.previousStarred) {
+        queryClient.setQueryData(["messages", session.token, "__STARRED__", messageLimit], context.previousStarred);
+      }
     }
   });
 
@@ -343,7 +577,6 @@ export function MailDashboard({
     mutationFn: (folder: string) => createFolderRequest(session.token, folder),
     onSuccess: () => {
       foldersQuery.refetch();
-      setLabelsOpen(true);
       setActionError(null);
     },
     onError: (error: Error) => {
@@ -372,12 +605,16 @@ export function MailDashboard({
   });
 
   useEffect(() => {
+    if (readingPane === "list") {
+      return;
+    }
+
     if (messagesQuery.data?.messages.length && selectedUid === null) {
       const firstMessage = messagesQuery.data.messages[0];
       setSelectedUid(firstMessage.uid);
       setSelectedMessageSourceFolder(firstMessage.folder);
     }
-  }, [messagesQuery.data, selectedUid]);
+  }, [messagesQuery.data, readingPane, selectedUid]);
 
   useEffect(() => {
     if (!selectedPreview) {
@@ -422,6 +659,10 @@ export function MailDashboard({
   useEffect(() => {
     setSelectedMessageKeys(new Set());
     setDragMoveMode(false);
+    setSelectionMode(false);
+    setSelectMenuOpen(false);
+    setMessageLimit(25);
+    setIsLoadingMore(false);
   }, [activeFolder]);
 
   useEffect(() => {
@@ -429,6 +670,28 @@ export function MailDashboard({
       setDragMoveMode(false);
     }
   }, [selectedMessageKeys]);
+
+  useEffect(() => {
+    if (!messagesQuery.isFetching) {
+      setIsLoadingMore(false);
+    }
+  }, [messagesQuery.isFetching]);
+
+  useEffect(() => {
+    const currentMessages = messagesQuery.data?.messages ?? [];
+    const currentKeys = currentMessages.map((message) => toMessageKey(message.folder, message.uid));
+    const previousKeys = knownMessageKeysByFolderRef.current[activeFolder] ?? [];
+
+    if (previousKeys.length && currentKeys.length) {
+      const previousFirst = previousKeys[0];
+      const currentFirst = currentKeys[0];
+      if (previousFirst !== currentFirst) {
+        playNotificationTone();
+      }
+    }
+
+    knownMessageKeysByFolderRef.current[activeFolder] = currentKeys;
+  }, [activeFolder, messagesQuery.data?.messages]);
 
   useEffect(() => {
     if (!resizeTarget) {
@@ -495,7 +758,63 @@ export function MailDashboard({
     }
   }, [messagesQuery.data?.messages, selectedUid]);
 
-  const labelFolders = useMemo(() => {
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const labelsRaw = window.localStorage.getItem(userLabelsStorageKey);
+    if (labelsRaw) {
+      try {
+        const parsed = JSON.parse(labelsRaw) as UserLabel[];
+        if (Array.isArray(parsed)) {
+          setUserLabels(parsed);
+        }
+      } catch {
+        setUserLabels([]);
+      }
+    } else {
+      setUserLabels([]);
+    }
+
+    const assignmentsRaw = window.localStorage.getItem(messageLabelAssignmentsStorageKey);
+    if (assignmentsRaw) {
+      try {
+        const parsed = JSON.parse(assignmentsRaw) as MessageLabelAssignments;
+        if (parsed && typeof parsed === "object") {
+          setMessageLabelAssignments(parsed);
+        }
+      } catch {
+        setMessageLabelAssignments({});
+      }
+    } else {
+      setMessageLabelAssignments({});
+    }
+  }, [messageLabelAssignmentsStorageKey, userLabelsStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(userLabelsStorageKey, JSON.stringify(userLabels));
+  }, [userLabels, userLabelsStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(messageLabelAssignmentsStorageKey, JSON.stringify(messageLabelAssignments));
+  }, [messageLabelAssignments, messageLabelAssignmentsStorageKey]);
+
+  useEffect(() => {
+    if (selectedLabelId && !userLabels.some((label) => label.id === selectedLabelId)) {
+      setSelectedLabelId(null);
+    }
+  }, [selectedLabelId, userLabels]);
+
+  const customImapFolders = useMemo(() => {
     const systemFolderNames = ["inbox", "sent", "draft", "trash", "junk", "spam", "archive", "starred"];
 
     return availableFolders.filter((folder) => {
@@ -505,7 +824,189 @@ export function MailDashboard({
     });
   }, [availableFolders]);
 
-  const customImapFolders = labelFolders;
+  const userLabelMap = useMemo(() => {
+    return new Map(userLabels.map((label) => [label.id, label]));
+  }, [userLabels]);
+
+  const getMessageLabelIds = (message: MessagePreview) => {
+    return messageLabelAssignments[toMessageKey(message.folder, message.uid)] ?? [];
+  };
+
+  const createUserLabel = (name: string): UserLabel => {
+    const trimmed = name.trim();
+    const existing = userLabels.find((label) => label.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      return existing;
+    }
+
+    const hash = hashString(trimmed);
+    const newLabel: UserLabel = {
+      id: `${Date.now()}-${hash}`,
+      name: trimmed,
+      colorIndex: hash % LABEL_COLOR_PALETTE.length,
+      iconIndex: hash % LABEL_ICONS.length
+    };
+
+    setUserLabels((current) => [...current, newLabel]);
+    return newLabel;
+  };
+
+  const openCreateUserLabelEditor = (defaultName = "") => {
+    const hash = hashString(defaultName || String(Date.now()));
+    setLabelEditor({
+      mode: "create",
+      labelId: null,
+      name: defaultName,
+      iconIndex: hash % LABEL_ICONS.length
+    });
+    setLabelsOpen(true);
+  };
+
+  const openEditUserLabelEditor = (labelId: string) => {
+    const label = userLabels.find((item) => item.id === labelId);
+    if (!label) {
+      return;
+    }
+
+    setLabelEditor({
+      mode: "edit",
+      labelId,
+      name: label.name,
+      iconIndex: label.iconIndex
+    });
+  };
+
+  const saveLabelEditor = () => {
+    if (!labelEditor) {
+      return;
+    }
+
+    const nextName = labelEditor.name.trim();
+    if (!nextName) {
+      setActionError("Label name is required.");
+      return;
+    }
+
+    if (labelEditor.mode === "create") {
+      const existing = userLabels.find((label) => label.name.toLowerCase() === nextName.toLowerCase());
+      if (existing) {
+        setSelectedLabelId(existing.id);
+        setLabelEditor(null);
+        setActionError(null);
+        return;
+      }
+
+      const hash = hashString(nextName);
+      const newLabel: UserLabel = {
+        id: `${Date.now()}-${hash}`,
+        name: nextName,
+        colorIndex: hash % LABEL_COLOR_PALETTE.length,
+        iconIndex: labelEditor.iconIndex % LABEL_ICONS.length
+      };
+      setUserLabels((current) => [...current, newLabel]);
+      setSelectedLabelId(newLabel.id);
+      setLabelEditor(null);
+      setActionError(null);
+      return;
+    }
+
+    setUserLabels((current) =>
+      current.map((item) =>
+        item.id === labelEditor.labelId
+          ? {
+              ...item,
+              name: nextName,
+              iconIndex: labelEditor.iconIndex % LABEL_ICONS.length,
+              colorIndex: hashString(nextName) % LABEL_COLOR_PALETTE.length
+            }
+          : item
+      )
+    );
+    setLabelEditor(null);
+    setActionError(null);
+  };
+
+  const deleteUserLabel = (labelId: string) => {
+    const label = userLabels.find((item) => item.id === labelId);
+    if (!label) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete label "${label.name}"?`);
+    if (!confirmed) {
+      return;
+    }
+
+    setUserLabels((current) => current.filter((item) => item.id !== labelId));
+    setMessageLabelAssignments((current) => {
+      const next: MessageLabelAssignments = {};
+      for (const [messageKey, labelIds] of Object.entries(current)) {
+        const filteredIds = labelIds.filter((item) => item !== labelId);
+        if (filteredIds.length) {
+          next[messageKey] = filteredIds;
+        }
+      }
+      return next;
+    });
+
+    setSelectedLabelId((current) => (current === labelId ? null : current));
+  };
+
+  const assignLabelToMessages = (messages: MessagePreview[], labelId: string) => {
+    if (!messages.length) {
+      return;
+    }
+
+    setMessageLabelAssignments((current) => {
+      const next = { ...current };
+      for (const message of messages) {
+        const key = toMessageKey(message.folder, message.uid);
+        const currentLabels = next[key] ?? [];
+        if (!currentLabels.includes(labelId)) {
+          next[key] = [...currentLabels, labelId];
+        }
+      }
+      return next;
+    });
+  };
+
+  const removeLabelsFromMessage = (message: MessagePreview) => {
+    const key = toMessageKey(message.folder, message.uid);
+    setMessageLabelAssignments((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const promptAssignLabelToMessages = (messages: MessagePreview[]) => {
+    if (!messages.length) {
+      return;
+    }
+
+    const existingNames = userLabels.map((label) => label.name).join(", ");
+    const input = window
+      .prompt(existingNames ? `Label name (existing: ${existingNames})` : "Label name", userLabels[0]?.name ?? "")
+      ?.trim();
+
+    if (!input) {
+      return;
+    }
+
+    const label = createUserLabel(input);
+    assignLabelToMessages(messages, label.id);
+  };
+
+  const labelCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    (messagesQuery.data?.messages ?? []).forEach((message) => {
+      const ids = getMessageLabelIds(message);
+      ids.forEach((id) => {
+        counts[id] = (counts[id] ?? 0) + 1;
+      });
+    });
+    return counts;
+  }, [messageLabelAssignments, messagesQuery.data?.messages]);
 
   const filteredMessages = useMemo(() => {
     const now = Date.now();
@@ -520,11 +1021,19 @@ export function MailDashboard({
         return false;
       }
 
+      if (statusFilter === "read" && message.unread) {
+        return false;
+      }
+
       if (statusFilter === "unread" && !message.unread) {
         return false;
       }
 
       if (statusFilter === "flagged" && !message.flagged) {
+        return false;
+      }
+
+      if (selectedLabelId && !getMessageLabelIds(message).includes(selectedLabelId)) {
         return false;
       }
 
@@ -535,14 +1044,6 @@ export function MailDashboard({
 
         const messageDate = new Date(message.date).getTime();
         const ageMs = now - messageDate;
-
-        if (dateRange === "today") {
-          const startOfToday = new Date();
-          startOfToday.setHours(0, 0, 0, 0);
-          if (messageDate < startOfToday.getTime()) {
-            return false;
-          }
-        }
 
         if (dateRange === "7d" && ageMs > 7 * 24 * 60 * 60 * 1000) {
           return false;
@@ -567,7 +1068,7 @@ export function MailDashboard({
       const haystack = `${message.subject} ${message.from} ${message.preview}`.toLowerCase();
       return haystack.includes(searchText.toLowerCase());
     });
-  }, [categoryFilter, dateRange, filterUnread, messagesQuery.data?.messages, searchText, statusFilter]);
+  }, [categoryFilter, dateRange, filterUnread, messageLabelAssignments, messagesQuery.data?.messages, searchText, selectedLabelId, statusFilter]);
 
   const detail = selectedMessageQuery.data?.message;
   const switchableAccounts = savedAccounts.filter((account) => account.session.token !== session.token);
@@ -610,6 +1111,10 @@ export function MailDashboard({
   const activeSelectedMessages = selectedMessages.length ? selectedMessages : selectedPreview ? [selectedPreview] : [];
 
   const activeSidebarLabel = useMemo(() => {
+    if (selectedLabelId) {
+      return "Labels";
+    }
+
     if (activeFolder === "__STARRED__") {
       return "Starred";
     }
@@ -633,10 +1138,6 @@ export function MailDashboard({
         break;
     }
 
-    if (labelFolders.some((folder) => folder.path === activeFolder)) {
-      return "Labels";
-    }
-
     if (spamFolderPath && activeFolder === spamFolderPath) {
       return "Spam";
     }
@@ -650,17 +1151,24 @@ export function MailDashboard({
     }
 
     const matched = sidebarItems.find((item) => item.fallback !== "__STARRED__" && activeFolder === item.fallback);
-    return matched?.label ?? "Inbox";
-  }, [activeFolder, archiveFolderPath, availableFolders, inboxFolderPath, labelFolders, spamFolderPath]);
+    return matched?.label ?? null;
+  }, [activeFolder, archiveFolderPath, availableFolders, inboxFolderPath, selectedLabelId, spamFolderPath]);
 
   const activeFolderTitle = useMemo(() => {
+    if (selectedLabelId) {
+      const selectedLabel = userLabels.find((label) => label.id === selectedLabelId);
+      if (selectedLabel) {
+        return `Label: ${selectedLabel.name}`;
+      }
+    }
+
     if (activeFolder === "__STARRED__") {
       return "Starred";
     }
 
     const matched = availableFolders.find((folder) => folder.path === activeFolder);
     return matched?.name ?? activeFolder;
-  }, [activeFolder, availableFolders]);
+  }, [activeFolder, availableFolders, selectedLabelId, userLabels]);
 
   const openNewComposer = () => {
     setComposerDraft({
@@ -690,6 +1198,24 @@ export function MailDashboard({
     });
   };
 
+  const openForwardComposer = () => {
+    if (!detail) {
+      return;
+    }
+
+    const forwardSubject = detail.subject.startsWith("Fwd:") ? detail.subject : `Fwd: ${detail.subject}`;
+    const forwardBody = `\n\n---------- Forwarded message ---------\nFrom: ${detail.from}\nDate: ${detail.date ? new Date(detail.date).toLocaleString() : "Unknown"}\nSubject: ${detail.subject}\nTo: ${detail.to}\n${detail.cc ? `Cc: ${detail.cc}\n` : ""}\n\n${detail.text || detail.html || ""}`;
+
+    setComposerDraft({
+      mode: "compose",
+      to: "",
+      cc: "",
+      bcc: "",
+      subject: forwardSubject,
+      body: forwardBody
+    });
+  };
+
   const promptCreateFolder = (defaultName = "") => {
     const folderName = window.prompt("Enter folder name", defaultName)?.trim();
     if (!folderName) {
@@ -702,6 +1228,41 @@ export function MailDashboard({
   const runFolderSync = () => {
     foldersQuery.refetch();
     messagesQuery.refetch();
+  };
+
+  const runMessagesSync = () => {
+    messagesQuery.refetch();
+  };
+
+  const startSelectionMode = () => {
+    setSelectionMode(true);
+    setSelectedMessageKeys(new Set());
+    setSelectMenuOpen(false);
+  };
+
+  const selectAllVisibleMessages = () => {
+    setSelectionMode(true);
+    setSelectedMessageKeys(new Set(filteredMessages.map((message) => toMessageKey(message.folder, message.uid))));
+    setSelectMenuOpen(false);
+  };
+
+  const turnSelectionModeOff = () => {
+    setSelectionMode(false);
+    setSelectedMessageKeys(new Set());
+    setDragMoveMode(false);
+    setSelectMenuOpen(false);
+  };
+
+  const handleListScroll = (event: UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+    const loadedMessageCount = messagesQuery.data?.messages.length ?? 0;
+    const canLoadMore = loadedMessageCount >= messageLimit;
+
+    if (distanceFromBottom < 80 && canLoadMore && !messagesQuery.isFetching && !isLoadingMore) {
+      setIsLoadingMore(true);
+      setMessageLimit((current) => current + 25);
+    }
   };
 
   const toggleMessageSelection = (message: MessagePreview) => {
@@ -858,6 +1419,7 @@ export function MailDashboard({
   };
 
   const isRightPane = readingPane === "right";
+  const isListPane = readingPane === "list";
   const allowDesktopResize = !isCompactViewport;
 
   return (
@@ -882,11 +1444,11 @@ export function MailDashboard({
           <div className="relative">
             <button
               className="inline-flex items-center rounded-2xl border border-brand-200 bg-white p-2.5 text-brand-700"
-              title={readingPane === "right" ? "Right pane view" : "Bottom pane view"}
+              title={readingPane === "right" ? "Right pane view" : readingPane === "bottom" ? "Bottom pane view" : "List view"}
               type="button"
               onClick={() => setPaneMenuOpen((current) => !current)}
             >
-              {readingPane === "right" ? <PanelRight className="h-4 w-4" /> : <PanelBottom className="h-4 w-4" />}
+              {readingPane === "right" ? <PanelRight className="h-4 w-4" /> : readingPane === "bottom" ? <PanelBottom className="h-4 w-4" /> : <LayoutPanelTop className="h-4 w-4" />}
             </button>
 
             {paneMenuOpen ? (
@@ -916,6 +1478,19 @@ export function MailDashboard({
                     <PanelBottom className="h-4 w-4 text-brand-600" /> Bottom view
                   </span>
                   {readingPane === "bottom" ? <Check className="h-4 w-4 text-brand-600" /> : null}
+                </button>
+                <button
+                  className="mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-surface-700 hover:bg-surface-50"
+                  type="button"
+                  onClick={() => {
+                    setReadingPane("list");
+                    setPaneMenuOpen(false);
+                  }}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <LayoutPanelTop className="h-4 w-4 text-brand-600" /> List view
+                  </span>
+                  {readingPane === "list" ? <Check className="h-4 w-4 text-brand-600" /> : null}
                 </button>
               </div>
             ) : null}
@@ -1048,16 +1623,15 @@ export function MailDashboard({
                     if (item.label === "Labels") {
                       const nextState = !labelsOpen;
                       setLabelsOpen(nextState);
-                      if (nextState && labelFolders.length && !labelFolders.some((folder) => folder.path === activeFolder)) {
-                        setActiveFolder(labelFolders[0].path);
-                        setSelectedUid(null);
-                        setSelectedMessageSourceFolder(null);
+                      if (!nextState) {
+                        setSelectedLabelId(null);
                       }
                       return;
                     }
                     if (targetFolder) {
                       setActiveFolder(targetFolder);
                     }
+                    setSelectedLabelId(null);
                     setLabelsOpen(false);
                     setSelectedUid(null);
                     setSelectedMessageSourceFolder(null);
@@ -1085,103 +1659,142 @@ export function MailDashboard({
 
           {labelsOpen ? (
             <div className="mt-2 border-t border-white/15 pt-2">
-              <div className="mb-2 flex items-center justify-between px-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-100">Folder labels</p>
-                <button className="text-[11px] text-brand-100 hover:text-white" type="button" onClick={() => promptCreateFolder("NewLabel")}>Create</button>
+              <div className="mb-2 flex items-center justify-between px-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-100">Mail labels</p>
+                <button className="text-[11px] text-brand-100 hover:text-white" type="button" onClick={() => openCreateUserLabelEditor("NewLabel")}>Create</button>
               </div>
-              <div className="space-y-1">
-                {labelFolders.length ? (
-                  labelFolders.map((folder) => (
-                    <button
-                      key={folder.path}
-                      className={`w-full truncate px-2 py-1 text-left text-xs ${activeFolder === folder.path ? "bg-white/20 text-white" : "text-white/80 hover:bg-white/10"}`}
-                      type="button"
-                      onClick={() => {
-                        setActiveFolder(folder.path);
-                        setLabelsOpen(true);
-                        setSelectedUid(null);
-                        setSelectedMessageSourceFolder(null);
-                      }}
-                      onDragOver={(event) => {
-                        if (!dragMoveMode) {
-                          return;
-                        }
-                        event.preventDefault();
-                      }}
-                      onDrop={(event) => {
-                        if (!dragMoveMode) {
-                          return;
-                        }
-                        event.preventDefault();
-                        void dropSelectedToFolder(folder.path);
-                      }}
-                    >
-                      {folder.name}
-                    </button>
-                  ))
+              <div className="space-y-2">
+                {userLabels.length ? (
+                  userLabels.map((label) => {
+                    const labelColor = LABEL_COLOR_PALETTE[label.colorIndex % LABEL_COLOR_PALETTE.length];
+                    const LabelIcon = LABEL_ICONS[label.iconIndex % LABEL_ICONS.length];
+                    const isActive = selectedLabelId === label.id;
+                    return (
+                      <div
+                        key={label.id}
+                        className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm transition ${
+                          isActive ? "bg-white text-brand-700" : "bg-white/5 text-white/80 hover:bg-white/10"
+                        }`}
+                      >
+                        <button
+                          className="flex flex-1 items-center gap-3 truncate text-left"
+                          type="button"
+                          onClick={() => {
+                            setSelectedLabelId((current) => (current === label.id ? null : label.id));
+                          }}
+                        >
+                          <LabelIcon className={`h-4 w-4 shrink-0 ${isActive ? "text-brand-600" : labelColor.iconClass}`} />
+                          <span className="truncate">{label.name}</span>
+                          <span className={`ml-auto shrink-0 pr-1 text-xs ${isActive ? "text-brand-500" : "text-white/60"}`}>{labelCounts[label.id] ?? 0}</span>
+                        </button>
+                        <button
+                          className={`shrink-0 rounded-lg p-1 transition ${
+                            isActive ? "text-brand-400 hover:bg-brand-100 hover:text-brand-700" : "text-white/30 hover:bg-white/10 hover:text-white"
+                          }`}
+                          type="button"
+                          title={`Edit ${label.name}`}
+                          onClick={() => openEditUserLabelEditor(label.id)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          className={`shrink-0 rounded-lg p-1 transition ${
+                            isActive ? "text-brand-400 hover:bg-brand-100 hover:text-rose-600" : "text-white/30 hover:bg-white/10 hover:text-rose-300"
+                          }`}
+                          type="button"
+                          title={`Delete ${label.name}`}
+                          onClick={() => deleteUserLabel(label.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })
                 ) : (
-                  <p className="px-2 py-1 text-xs text-white/70">No labels yet. Create one.</p>
+                  <div className="flex w-full items-center gap-3 rounded-2xl bg-white/5 px-4 py-3 text-sm text-white/40">
+                    <Tag className="h-4 w-4 shrink-0" />
+                    No labels yet. Create one.
+                  </div>
                 )}
               </div>
             </div>
           ) : null}
 
           <div className="mt-3 border-t border-white/15 pt-2">
-            <div className="mb-2 flex items-center justify-between px-2">
+            <div className="mb-2 flex items-center justify-between px-4">
               <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-100">IMAP folders (custom)</p>
               <div className="flex items-center gap-2">
-                <button className="text-[11px] text-brand-100 hover:text-white" type="button" onClick={() => promptCreateFolder()}>
+                <button className="text-brand-100 hover:text-white" type="button" title="Create folder" onClick={() => promptCreateFolder()}>
                   <FolderPlus className="h-3.5 w-3.5" />
                 </button>
-                <button className="text-[11px] text-brand-100 hover:text-white" type="button" onClick={runFolderSync}>
+                <button className="text-brand-100 hover:text-white" type="button" title="Sync folders" onClick={runFolderSync}>
                   <RefreshCcw className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-2">
               {customImapFolders.length ? (
-                customImapFolders.map((folder) => (
-                  <div key={folder.path} className="flex items-center gap-1">
-                    <button
-                      className={`flex-1 truncate px-2 py-1 text-left text-xs ${activeFolder === folder.path ? "bg-white/20 text-white" : "text-white/80 hover:bg-white/10"}`}
-                      type="button"
-                      onClick={() => {
-                        setActiveFolder(folder.path);
-                        setSelectedUid(null);
-                        setSelectedMessageSourceFolder(null);
-                      }}
-                      onDragOver={(event) => {
-                        if (!dragMoveMode) {
-                          return;
-                        }
-                        event.preventDefault();
-                      }}
-                      onDrop={(event) => {
-                        if (!dragMoveMode) {
-                          return;
-                        }
-                        event.preventDefault();
-                        void dropSelectedToFolder(folder.path);
-                      }}
+                customImapFolders.map((folder) => {
+                  const colorIndex = hashString(folder.name) % LABEL_COLOR_PALETTE.length;
+                  const labelColor = LABEL_COLOR_PALETTE[colorIndex];
+                  const LabelIcon = LABEL_ICONS[colorIndex % LABEL_ICONS.length];
+                  const isActive = activeFolder === folder.path;
+                  return (
+                    <div
+                      key={folder.path}
+                      className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm transition ${
+                        isActive ? "bg-white text-brand-700" : "bg-white/5 text-white/80 hover:bg-white/10"
+                      }`}
                     >
-                      {folder.name}
-                    </button>
-                    <button
-                      className="rounded px-1 py-0.5 text-[10px] text-rose-200 hover:bg-rose-500/30 hover:text-white"
-                      type="button"
-                      onClick={() => {
-                        const confirmed = window.confirm(`Delete folder ${folder.name}?`);
-                        if (confirmed) {
-                          deleteFolderMutation.mutate(folder.path);
-                        }
-                      }}
-                    >
-                      x
-                    </button>
-                  </div>
-                ))
+                      <button
+                        className="flex flex-1 items-center gap-3 truncate text-left"
+                        type="button"
+                        onClick={() => {
+                          setActiveFolder(folder.path);
+                          setSelectedLabelId(null);
+                          setSelectedUid(null);
+                          setSelectedMessageSourceFolder(null);
+                        }}
+                        onDragOver={(event) => {
+                          if (!dragMoveMode) {
+                            return;
+                          }
+                          event.preventDefault();
+                        }}
+                        onDrop={(event) => {
+                          if (!dragMoveMode) {
+                            return;
+                          }
+                          event.preventDefault();
+                          void dropSelectedToFolder(folder.path);
+                        }}
+                      >
+                        <LabelIcon className={`h-4 w-4 shrink-0 ${isActive ? "text-brand-600" : labelColor.iconClass}`} />
+                        <span className="truncate">{folder.name}</span>
+                      </button>
+                      <button
+                        className={`shrink-0 rounded-lg p-1 transition ${
+                          isActive ? "text-brand-400 hover:bg-brand-100 hover:text-rose-600" : "text-white/30 hover:bg-white/10 hover:text-rose-300"
+                        }`}
+                        type="button"
+                        title={`Delete ${folder.name}`}
+                        onClick={() => {
+                          const confirmed = window.confirm(`Delete folder "${folder.name}"?`);
+                          if (confirmed) {
+                            deleteFolderMutation.mutate(folder.path);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })
               ) : (
-                <p className="px-2 py-1 text-xs text-white/70">No custom folders yet.</p>
+                <div className="flex w-full items-center gap-3 rounded-2xl bg-white/5 px-4 py-3 text-sm text-white/40">
+                  <FolderPlus className="h-4 w-4 shrink-0" />
+                  No custom folders yet.
+                </div>
               )}
             </div>
           </div>
@@ -1198,25 +1811,58 @@ export function MailDashboard({
 
         <div
           ref={contentGridRef}
-          className={`grid min-h-0 ${isCompactViewport || !isRightPane ? "grid-rows-[320px_minmax(0,1fr)]" : ""}`}
+          className={`grid min-h-0 ${isListPane ? "" : isCompactViewport || !isRightPane ? "grid-rows-[320px_minmax(0,1fr)]" : ""}`}
           style={
-            !isCompactViewport && isRightPane
-              ? { gridTemplateColumns: `${listWidth}px minmax(0,1fr)` }
-              : !isCompactViewport && !isRightPane
-                ? { gridTemplateRows: `${bottomPaneHeight}px minmax(0,1fr)` }
-              : undefined
+            isListPane
+              ? undefined
+              : !isCompactViewport && isRightPane
+                ? { gridTemplateColumns: `${listWidth}px minmax(0,1fr)` }
+                : !isCompactViewport && !isRightPane
+                  ? { gridTemplateRows: `${bottomPaneHeight}px minmax(0,1fr)` }
+                  : undefined
           }
         >
-          <section className="relative flex min-h-0 flex-col border-r border-surface-200 bg-white">
+          <section className={`relative min-h-0 flex-col bg-white ${isListPane && selectedUid !== null ? "hidden" : "flex"} ${!isListPane ? "border-r border-surface-200" : ""}`}>
             <div className="flex items-center justify-between border-b border-surface-200 px-5 py-4">
               <div>
                 <p className="text-sm font-semibold text-surface-900">{activeFolderTitle}</p>
                 <p className="text-xs text-surface-500">{filteredMessages.length} messages</p>
                 {selectedMessageKeys.size ? <p className="text-xs text-brand-700">{selectedMessageKeys.size} selected</p> : null}
               </div>
+              <button
+                className="inline-flex items-center rounded-xl border border-brand-200 bg-white p-2 text-brand-700 hover:bg-brand-50"
+                title="Refresh list"
+                type="button"
+                onClick={runMessagesSync}
+              >
+                <RefreshCcw className={`h-4 w-4 ${messagesQuery.isFetching ? "animate-spin" : ""}`} />
+              </button>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 border-b border-surface-200 px-3 py-2">
+              <div className="relative">
+                <button
+                  className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs ${selectionMode ? "border-brand-300 bg-brand-50 text-brand-700" : "border-brand-200 text-brand-700 hover:bg-brand-50"}`}
+                  type="button"
+                  onClick={() => setSelectMenuOpen((current) => !current)}
+                >
+                  Select
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                {selectMenuOpen ? (
+                  <div className="absolute left-0 top-[calc(100%+0.35rem)] z-20 w-36 rounded-xl border border-surface-200 bg-white p-1 shadow-panel">
+                    <button className="block w-full rounded-lg px-3 py-2 text-left text-xs text-surface-700 hover:bg-surface-50" type="button" onClick={startSelectionMode}>
+                      Select
+                    </button>
+                    <button className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-xs text-surface-700 hover:bg-surface-50" type="button" onClick={selectAllVisibleMessages}>
+                      Select All
+                    </button>
+                    <button className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-xs text-surface-700 hover:bg-surface-50" type="button" onClick={turnSelectionModeOff}>
+                      Turn select off
+                    </button>
+                  </div>
+                ) : null}
+              </div>
               <button
                 className={`rounded-xl border border-brand-200 px-2.5 py-1.5 text-xs ${filterUnread ? "bg-brand-400 text-white" : "text-brand-700 hover:bg-brand-50"}`}
                 type="button"
@@ -1252,6 +1898,14 @@ export function MailDashboard({
               >
                 Move
               </button>
+              <button
+                className="rounded-xl border border-brand-200 px-2.5 py-1.5 text-xs text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+                disabled={!activeSelectedMessages.length}
+                type="button"
+                onClick={() => promptAssignLabelToMessages(activeSelectedMessages)}
+              >
+                Label
+              </button>
               {dragMoveMode ? <p className="text-xs text-brand-700">Drag selected emails to a folder in the left sidebar.</p> : null}
             </div>
 
@@ -1266,129 +1920,169 @@ export function MailDashboard({
                 Advanced filters
                 <ChevronDown className={`h-3.5 w-3.5 transition ${filtersOpen ? "rotate-180" : "rotate-0"}`} />
               </button>
-              {filtersOpen ? <div className="flex flex-wrap gap-1.5">
-                {["all", "today", "7d", "30d"].map((value) => (
-                  <button
-                    key={`date-${value}`}
-                    className={`rounded-xl px-2 py-0.5 text-[11px] ${dateRange === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
-                    type="button"
-                    onClick={() => setDateRange(value as "all" | "today" | "7d" | "30d")}
-                  >
-                    {value === "all" ? "Date: All" : `Date: ${value}`}
-                  </button>
-                ))}
-                {["all", "ops", "security", "billing"].map((value) => (
-                  <button
-                    key={`cat-${value}`}
-                    className={`rounded-xl px-2 py-0.5 text-[11px] ${categoryFilter === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
-                    type="button"
-                    onClick={() => setCategoryFilter(value as "all" | "ops" | "security" | "billing")}
-                  >
-                    {value === "all" ? "Category: All" : `Category: ${value}`}
-                  </button>
-                ))}
-                {["all", "unread", "flagged"].map((value) => (
-                  <button
-                    key={`status-${value}`}
-                    className={`rounded-xl px-2 py-0.5 text-[11px] ${statusFilter === value ? "bg-brand-400 text-white" : "border border-brand-200 bg-white text-brand-700"}`}
-                    type="button"
-                    onClick={() => setStatusFilter(value as "all" | "unread" | "flagged")}
-                  >
-                    {value === "all" ? "Status: All" : `Status: ${value}`}
-                  </button>
-                ))}
-              </div> : null}
+              {filtersOpen ? (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-500">Date</span>
+                    <select
+                      className="rounded-xl border border-brand-200 bg-white px-2.5 py-1.5 text-xs text-brand-700 outline-none"
+                      value={dateRange}
+                      onChange={(event) => setDateRange(event.target.value as "all" | "7d" | "30d")}
+                    >
+                      <option value="all">Date: All</option>
+                      <option value="7d">Date: 7d</option>
+                      <option value="30d">Date: 30d</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-500">Category</span>
+                    <select
+                      className="rounded-xl border border-brand-200 bg-white px-2.5 py-1.5 text-xs text-brand-700 outline-none"
+                      value={categoryFilter}
+                      onChange={(event) => setCategoryFilter(event.target.value as "all" | "ops" | "security" | "billing")}
+                    >
+                      <option value="all">Category: All</option>
+                      <option value="ops">Category: ops</option>
+                      <option value="security">Category: security</option>
+                      <option value="billing">Category: billing</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-500">Status</span>
+                    <select
+                      className="rounded-xl border border-brand-200 bg-white px-2.5 py-1.5 text-xs text-brand-700 outline-none"
+                      value={statusFilter}
+                      onChange={(event) => setStatusFilter(event.target.value as "all" | "read" | "unread" | "flagged")}
+                    >
+                      <option value="all">Status: All</option>
+                      <option value="read">Status: read (new)</option>
+                      <option value="unread">Status: unread</option>
+                      <option value="flagged">Status: flagged</option>
+                    </select>
+                  </label>
+                </div>
+              ) : null}
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto hide-scrollbar">
-              {filteredMessages.map((message) => (
-                <div
-                  key={message.uid}
-                  className={`flex w-full items-center gap-2.5 border-b border-surface-100 px-3 py-2 text-left transition hover:bg-brand-50 ${
-                    selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || selectedUid === message.uid ? "bg-brand-50" : "bg-white"
-                  }`}
-                  role="button"
-                  tabIndex={0}
-                  draggable={selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || dragMoveMode}
-                  onDragStart={(event) => {
-                    if (!selectedMessageKeys.has(toMessageKey(message.folder, message.uid))) {
-                      setSelectedMessageKeys(new Set([toMessageKey(message.folder, message.uid)]));
-                    }
-                    setDragMoveMode(true);
-                    event.dataTransfer.effectAllowed = "move";
-                    event.dataTransfer.setData("text/plain", toMessageKey(message.folder, message.uid));
-                  }}
-                  onClick={() => {
-                    setSelectedUid(message.uid);
-                    setSelectedMessageSourceFolder(message.folder);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
+            <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto hide-scrollbar" onScroll={handleListScroll}>
+              {filteredMessages.map((message) => {
+                const messageLabelIds = getMessageLabelIds(message);
+                const messageLabels = messageLabelIds
+                  .map((labelId) => userLabelMap.get(labelId))
+                  .filter((label): label is UserLabel => Boolean(label));
+                const primaryLabel = messageLabels[0];
+                const extraLabelCount = Math.max(0, messageLabels.length - 1);
+                const primaryLabelColor = primaryLabel ? LABEL_COLOR_PALETTE[primaryLabel.colorIndex % LABEL_COLOR_PALETTE.length] : null;
+                const PrimaryLabelIcon = primaryLabel ? LABEL_ICONS[primaryLabel.iconIndex % LABEL_ICONS.length] : null;
+
+                return (
+                  <div
+                    key={message.uid}
+                    className={`group flex h-[72px] w-full items-center gap-2 border-b border-surface-100 px-3 py-2 text-left transition hover:bg-brand-50 ${
+                      selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || selectedUid === message.uid ? "bg-brand-50" : "bg-white"
+                    }`}
+                    role="button"
+                    tabIndex={0}
+                    draggable={selectionMode && (selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || dragMoveMode)}
+                    onDragStart={(event) => {
+                      if (!selectionMode) {
+                        return;
+                      }
+                      if (!selectedMessageKeys.has(toMessageKey(message.folder, message.uid))) {
+                        setSelectedMessageKeys(new Set([toMessageKey(message.folder, message.uid)]));
+                      }
+                      setDragMoveMode(true);
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", toMessageKey(message.folder, message.uid));
+                    }}
+                    onClick={() => {
                       setSelectedUid(message.uid);
                       setSelectedMessageSourceFolder(message.folder);
-                    }
-                  }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setSelectedUid(message.uid);
-                    setSelectedMessageSourceFolder(message.folder);
-                    setContextMenu({
-                      x: event.clientX,
-                      y: event.clientY,
-                      message
-                    });
-                  }}
-                >
-                  <button
-                    className="rounded p-0.5"
-                    type="button"
-                    onClick={(event) => {
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedUid(message.uid);
+                        setSelectedMessageSourceFolder(message.folder);
+                      }
+                    }}
+                    onContextMenu={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      toggleMessageSelection(message);
+                      if (!isListPane) {
+                        setSelectedUid(message.uid);
+                        setSelectedMessageSourceFolder(message.folder);
+                      }
+                      setContextMenu({
+                        x: event.clientX,
+                        y: event.clientY,
+                        message
+                      });
                     }}
                   >
-                    {selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) ? (
-                      <CheckSquare className="h-4 w-4 text-brand-600" />
-                    ) : (
-                      <Square className="h-4 w-4 text-surface-300" />
-                    )}
-                  </button>
-                  <div className="flex items-center gap-1">
-                    <div className={`h-2.5 w-2.5 rounded-full ${message.unread ? "bg-brand-600" : "bg-surface-200"}`} />
-                    <button
-                      className="rounded p-0.5"
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        event.preventDefault();
-                        updateMessageState({ folder: message.folder, uid: message.uid, flagged: !message.flagged });
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
+                    {selectionMode ? (
+                      <button
+                        className="rounded p-0.5"
+                        type="button"
+                        onClick={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
+                          toggleMessageSelection(message);
+                        }}
+                      >
+                        {selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) ? (
+                          <CheckSquare className="h-4 w-4 text-brand-600" />
+                        ) : (
+                          <Square className="h-4 w-4 text-surface-300" />
+                        )}
+                      </button>
+                    ) : null}
+                    <div className="flex items-center gap-1">
+                      <div className={`h-2.5 w-2.5 rounded-full ${message.unread ? "bg-brand-600" : "bg-surface-200"}`} />
+                      <button
+                        className={`rounded p-0.5 transition-opacity ${message.flagged ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          event.preventDefault();
                           updateMessageState({ folder: message.folder, uid: message.uid, flagged: !message.flagged });
-                        }
-                      }}
-                    >
-                      <Star className={`h-3.5 w-3.5 shrink-0 ${message.flagged ? "fill-amber-400 text-amber-500" : "text-surface-300"}`} />
-                    </button>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-xs font-medium text-surface-700">{message.from}</p>
-                      <p className="shrink-0 text-xs text-surface-500">{message.date ? new Date(message.date).toLocaleDateString() : "Now"}</p>
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            updateMessageState({ folder: message.folder, uid: message.uid, flagged: !message.flagged });
+                          }
+                        }}
+                      >
+                        <Star className={`h-3.5 w-3.5 shrink-0 ${message.flagged ? "fill-amber-400 text-amber-500" : "text-surface-500"}`} />
+                      </button>
                     </div>
-                    <div className="mt-0.5 flex items-start gap-1.5">
-                      <p className="break-words text-sm font-semibold leading-5 text-surface-900">{message.subject}</p>
-                      {message.hasAttachments ? <Paperclip className="mt-0.5 h-3 w-3 shrink-0 text-surface-500" /> : null}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p title={message.from} className={`truncate text-xs text-surface-700 ${message.unread ? "font-medium" : "font-normal"}`}>{message.from}</p>
+                        <p className="shrink-0 text-xs text-surface-500">{message.date ? new Date(message.date).toLocaleDateString() : "Now"}</p>
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <p title={message.subject} className={`min-w-0 flex-1 truncate text-sm leading-5 text-surface-900 ${message.unread ? "font-semibold" : "font-normal"}`}>{message.subject}</p>
+                        {primaryLabel && PrimaryLabelIcon && primaryLabelColor ? (
+                          <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${primaryLabelColor.badgeClass}`}>
+                            <PrimaryLabelIcon className="h-3 w-3" />
+                            <span className="max-w-[72px] truncate">{primaryLabel.name}</span>
+                            {extraLabelCount ? <span>+{extraLabelCount}</span> : null}
+                          </span>
+                        ) : null}
+                        {message.hasAttachments ? <Paperclip className="mt-0.5 h-3 w-3 shrink-0 text-surface-500" /> : null}
+                      </div>
                     </div>
                   </div>
+                );
+              })}
+              {isLoadingMore ? (
+                <div className="flex items-center justify-center py-4">
+                  <RefreshCcw className="h-4 w-4 animate-spin text-brand-500" />
                 </div>
-              ))}
+              ) : null}
             </div>
 
             {isRightPane && allowDesktopResize ? (
@@ -1400,7 +2094,7 @@ export function MailDashboard({
               />
             ) : null}
 
-            {!isRightPane && allowDesktopResize ? (
+            {readingPane === "bottom" && allowDesktopResize ? (
               <button
                 aria-label="Resize bottom pane"
                 className="absolute bottom-[-3px] left-0 z-10 h-1.5 w-full cursor-row-resize bg-brand-200/30 transition hover:bg-brand-300/70"
@@ -1410,28 +2104,130 @@ export function MailDashboard({
             ) : null}
           </section>
 
+          {!isListPane || selectedUid !== null ? (
           <section className="min-h-0 bg-[linear-gradient(180deg,#f7fafe,#eef4fc)] p-6">
             {detail ? (
               <article className="flex h-full min-h-0 flex-col bg-white/85 p-6 shadow-panel backdrop-blur">
-                <div className="flex items-start justify-between gap-3 border-b border-surface-200 pb-5">
+                {isListPane ? (
+                  <div className="mb-4">
+                    <button
+                      className="inline-flex items-center gap-2 rounded-xl border border-brand-200 bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+                      type="button"
+                      onClick={() => {
+                        setSelectedUid(null);
+                        setSelectedMessageSourceFolder(null);
+                      }}
+                    >
+                      <ChevronDown className="h-3.5 w-3.5 rotate-90" />
+                      Back to list
+                    </button>
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-surface-200 pb-5">
                   <div className="min-w-0 flex-1 pr-2">
                     <h3 className="mt-1 break-words text-xl font-semibold leading-tight text-surface-900 sm:text-2xl">{detail.subject}</h3>
                     <p className="mt-3 text-sm text-surface-600">From {detail.from}</p>
                     <p className="text-sm text-surface-500">To {detail.to}</p>
                     {detail.cc ? <p className="text-sm text-surface-500">Cc {detail.cc}</p> : null}
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-2">
+                  <div className="flex shrink-0 flex-col items-end gap-3">
                     <div className="rounded-xl bg-brand-50 px-2.5 py-1.5 text-right text-xs text-brand-700">
                       <p className="whitespace-nowrap">{`${detail.date ? new Date(detail.date).toLocaleString() : "No timestamp"}, ${detail.unread ? "Unread" : "Read"}`}</p>
                     </div>
-                    <button
-                      className="inline-flex items-center gap-2 rounded-2xl bg-brand-400 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500"
-                      type="button"
-                      onClick={openReplyComposer}
-                    >
-                      <Reply className="h-4 w-4" />
-                      Reply
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="inline-flex items-center gap-2 rounded-2xl border border-surface-300 bg-white px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50"
+                        type="button"
+                        onClick={openForwardComposer}
+                        title="Forward"
+                      >
+                        <Forward className="h-4 w-4" />
+                        Forward
+                      </button>
+                      <button
+                        className="rounded-lg border border-surface-300 bg-white p-2 text-surface-700 transition hover:bg-surface-50"
+                        type="button"
+                        onClick={() => deleteSelectedMessage({ folder: selectedMessageFolder, uid: selectedUid as number })}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                      <button
+                        className="rounded-lg border border-surface-300 bg-white p-2 text-surface-700 transition hover:bg-surface-50"
+                        type="button"
+                        onClick={() => moveSelectedMessage(archiveFolderPath ?? null, { folder: selectedMessageFolder, uid: selectedUid as number })}
+                        disabled={!archiveFolderPath}
+                        title="Archive"
+                      >
+                        <Archive className="h-4 w-4" />
+                      </button>
+                      <button
+                        className="rounded-lg border border-surface-300 bg-white p-2 text-surface-700 transition hover:bg-surface-50"
+                        type="button"
+                        onClick={() => moveSelectedMessage(spamFolderPath ?? null, { folder: selectedMessageFolder, uid: selectedUid as number })}
+                        disabled={!spamFolderPath}
+                        title="Mark as Spam"
+                      >
+                        <Flag className="h-4 w-4" />
+                      </button>
+                      <button
+                        className={`rounded-lg border p-2 transition ${detail.flagged ? "border-amber-300 bg-amber-50" : "border-surface-300 bg-white hover:bg-surface-50"}`}
+                        type="button"
+                        onClick={() => updateMessageState({ folder: selectedMessageFolder, uid: selectedUid as number, flagged: !detail.flagged })}
+                        title="Star"
+                      >
+                        <Star className={`h-4 w-4 ${detail.flagged ? "fill-amber-400 text-amber-500" : "text-surface-700"}`} />
+                      </button>
+                      <div className="relative">
+                        <button
+                          className="rounded-lg border border-surface-300 bg-white p-2 text-surface-700 transition hover:bg-surface-50"
+                          type="button"
+                          onClick={() => setMessageHeaderMenuOpen(!messageHeaderMenuOpen)}
+                          title="More options"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                        {messageHeaderMenuOpen ? (
+                          <>
+                            <div className="fixed inset-0 z-40" onMouseDown={() => setMessageHeaderMenuOpen(false)} />
+                            <div
+                              className="absolute right-0 top-full z-50 mt-2 min-w-48 origin-top-right rounded-lg border border-surface-200 bg-white shadow-lg"
+                              onMouseDown={(event) => event.stopPropagation()}
+                            >
+                              <button
+                                className="w-full px-4 py-2 text-left text-sm text-surface-700 hover:bg-surface-50"
+                                type="button"
+                                onClick={() => {
+                                  updateMessageState({ folder: selectedMessageFolder, uid: selectedUid as number, unread: !detail.unread });
+                                  setMessageHeaderMenuOpen(false);
+                                }}
+                              >
+                                {detail.unread ? "Mark as read" : "Mark as unread"}
+                              </button>
+                              <button
+                                className="w-full px-4 py-2 text-left text-sm text-surface-700 hover:bg-surface-50"
+                                type="button"
+                                onClick={() => {
+                                  moveSelectedMessage(inboxFolderPath);
+                                  setMessageHeaderMenuOpen(false);
+                                }}
+                                disabled={!inboxFolderPath}
+                              >
+                                Move to Inbox
+                              </button>
+                            </div>
+                          </>
+                        ) : null}
+                      </div>
+                      <button
+                        className="inline-flex items-center gap-2 rounded-2xl bg-brand-400 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500"
+                        type="button"
+                        onClick={openReplyComposer}
+                      >
+                        <Reply className="h-4 w-4" />
+                        Reply
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1479,6 +2275,7 @@ export function MailDashboard({
               </div>
             )}
           </section>
+          ) : null}
         </div>
       </div>
 
@@ -1596,18 +2393,194 @@ export function MailDashboard({
             >
               Unstarred
             </button>
+            {userLabels.length ? (
+              <div className="mt-2 border-t border-surface-200 pt-2">
+                <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-surface-400">Mail labels</p>
+                <div className="space-y-1">
+                  {userLabels.map((label) => {
+                    const LabelIcon = LABEL_ICONS[label.iconIndex % LABEL_ICONS.length];
+                    const labelColor = LABEL_COLOR_PALETTE[label.colorIndex % LABEL_COLOR_PALETTE.length];
+                    const isAssigned = getMessageLabelIds(contextMenu.message).includes(label.id);
+                    return (
+                      <button
+                        key={label.id}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          assignLabelToMessages([contextMenu.message], label.id);
+                          setLabelsOpen(true);
+                          setContextMenu(null);
+                        }}
+                      >
+                        <LabelIcon className={`h-4 w-4 shrink-0 ${labelColor.iconClass}`} />
+                        <span className="min-w-0 flex-1 truncate">{label.name}</span>
+                        {isAssigned ? <Check className="h-4 w-4 shrink-0 text-brand-600" /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <button
+                className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setMissingLabelsModalOpen(true);
+                  setContextMenu(null);
+                }}
+              >
+                Assign to Mail Label
+              </button>
+            )}
             <button
               className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
-                promptCreateFolder("NewLabel");
-                setLabelsOpen(true);
+                removeLabelsFromMessage(contextMenu.message);
                 setContextMenu(null);
               }}
             >
-              Make a new label
+              Clear Labels
             </button>
+          </div>
+        </>
+      ) : null}
+
+      {labelEditor ? (
+        <>
+          <div className="fixed inset-0 z-40 bg-surface-900/35 backdrop-blur-sm" onMouseDown={() => setLabelEditor(null)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-lg rounded-[28px] border border-surface-200 bg-white p-6 shadow-panel"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-500">Mail Labels</p>
+                  <h3 className="mt-2 text-xl font-semibold text-surface-900">
+                    {labelEditor.mode === "create" ? "Create label" : "Edit label"}
+                  </h3>
+                  <p className="mt-1 text-sm text-surface-500">Choose a name and icon for this label badge.</p>
+                </div>
+                <button
+                  className="rounded-xl border border-surface-200 px-3 py-2 text-sm text-surface-500 hover:bg-surface-50"
+                  type="button"
+                  onClick={() => setLabelEditor(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <div className="mt-6 space-y-5">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-surface-700" htmlFor="label-editor-name">
+                    Label name
+                  </label>
+                  <input
+                    id="label-editor-name"
+                    className="w-full rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none transition focus:border-brand-300 focus:bg-white"
+                    value={labelEditor.name}
+                    onChange={(event) =>
+                      setLabelEditor((current) => (current ? { ...current, name: event.target.value } : current))
+                    }
+                    placeholder="Example: Google"
+                  />
+                </div>
+
+                <div>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-surface-700">Choose icon</p>
+                    <div className="rounded-full border border-surface-200 bg-surface-50 px-3 py-1 text-xs text-surface-500">
+                      {LABEL_ICONS.length} icons
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+                    {LABEL_ICONS.map((Icon, index) => {
+                      const isActive = labelEditor.iconIndex === index;
+                      const color = LABEL_COLOR_PALETTE[index % LABEL_COLOR_PALETTE.length];
+                      return (
+                        <button
+                          key={LABEL_ICON_NAMES[index]}
+                          className={`flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-xs transition ${
+                            isActive
+                              ? "border-brand-300 bg-brand-50 text-brand-700 shadow-sm"
+                              : "border-surface-200 bg-white text-surface-500 hover:border-brand-200 hover:bg-surface-50"
+                          }`}
+                          type="button"
+                          onClick={() =>
+                            setLabelEditor((current) => (current ? { ...current, iconIndex: index } : current))
+                          }
+                        >
+                          <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${isActive ? "bg-white" : "bg-surface-50"}`}>
+                            <Icon className={`h-5 w-5 ${isActive ? "text-brand-600" : color.iconClass}`} />
+                          </div>
+                          <span className="text-center capitalize leading-4">{LABEL_ICON_NAMES[index]}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-3">
+                <button
+                  className="rounded-2xl border border-surface-200 px-4 py-2.5 text-sm font-medium text-surface-600 hover:bg-surface-50"
+                  type="button"
+                  onClick={() => setLabelEditor(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="rounded-2xl bg-brand-400 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+                  type="button"
+                  onClick={saveLabelEditor}
+                >
+                  {labelEditor.mode === "create" ? "Create label" : "Save changes"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {missingLabelsModalOpen ? (
+        <>
+          <div className="fixed inset-0 z-40 bg-surface-900/35 backdrop-blur-sm" onMouseDown={() => setMissingLabelsModalOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-md rounded-[28px] border border-surface-200 bg-white p-6 shadow-panel"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-rose-500">Mail Labels Missing</p>
+              <h3 className="mt-2 text-xl font-semibold text-surface-900">No mail labels exist yet</h3>
+              <p className="mt-2 text-sm leading-6 text-surface-500">
+                Create a mail label first from the Labels section in the left sidebar. Click Create, choose a name and icon,
+                then right-click a message again to assign that label.
+              </p>
+              <div className="mt-6 flex items-center justify-end gap-3">
+                <button
+                  className="rounded-2xl border border-surface-200 px-4 py-2.5 text-sm font-medium text-surface-600 hover:bg-surface-50"
+                  type="button"
+                  onClick={() => setMissingLabelsModalOpen(false)}
+                >
+                  Close
+                </button>
+                <button
+                  className="rounded-2xl bg-brand-400 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+                  type="button"
+                  onClick={() => {
+                    setMissingLabelsModalOpen(false);
+                    setLabelsOpen(true);
+                    openCreateUserLabelEditor("NewLabel");
+                  }}
+                >
+                  Create mail label
+                </button>
+              </div>
+            </div>
           </div>
         </>
       ) : null}
