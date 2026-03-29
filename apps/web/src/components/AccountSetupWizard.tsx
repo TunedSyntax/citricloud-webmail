@@ -7,6 +7,7 @@ import type { SavedAccount } from "../App";
 import logoUrl from "../assets/logo.svg";
 
 type AccountSetupWizardProps = {
+  lastActiveToken: string | null;
   onAuthenticated: (payload: { session: AuthSession; folders: MailFolder[] }) => void;
   onResumeAccount: (token: string) => void;
   recentAccounts: SavedAccount[];
@@ -19,7 +20,13 @@ const defaultConnection = {
   secure: true
 };
 
-export function AccountSetupWizard({ onAuthenticated, onResumeAccount, recentAccounts, restoreError }: AccountSetupWizardProps) {
+export function AccountSetupWizard({
+  lastActiveToken,
+  onAuthenticated,
+  onResumeAccount,
+  recentAccounts,
+  restoreError
+}: AccountSetupWizardProps) {
   const [email, setEmail] = useState("ops@citricloud.com");
   const [password, setPassword] = useState("");
   const [selectedPreset, setSelectedPreset] = useState<string | undefined>();
@@ -110,17 +117,24 @@ export function AccountSetupWizard({ onAuthenticated, onResumeAccount, recentAcc
             ))}
           </div>
 
-          {recentAccounts.length ? (
-            <div className="rounded-[28px] border border-surface-200 bg-white/80 p-5 shadow-panel">
-              <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.24em] text-brand-700">
-                <History className="h-4 w-4" />
-                Active sessions ({recentAccounts.length})
-              </div>
+          <div className="rounded-[28px] border border-surface-200 bg-white/80 p-5 shadow-panel">
+            <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.24em] text-brand-700">
+              <History className="h-4 w-4" />
+              Active sessions ({recentAccounts.length})
+            </div>
+            {recentAccounts.length ? (
               <div className="mt-4 grid gap-3">
                 {recentAccounts.map((account) => (
                   <div key={account.session.token} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-surface-200 bg-white px-4 py-3">
                     <div>
-                      <p className="text-sm font-semibold text-surface-900">{account.session.email}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-surface-900">{account.session.email}</p>
+                        {account.session.token === lastActiveToken ? (
+                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700">
+                            Active
+                          </span>
+                        ) : null}
+                      </div>
                       <p className="text-xs text-surface-500">
                         {account.session.presetKey} · last active {new Date(account.session.createdAt).toLocaleString()}
                       </p>
@@ -135,8 +149,10 @@ export function AccountSetupWizard({ onAuthenticated, onResumeAccount, recentAcc
                   </div>
                 ))}
               </div>
-            </div>
-          ) : null}
+            ) : (
+              <p className="mt-4 text-sm text-surface-600">No active sessions found on this device yet.</p>
+            )}
+          </div>
         </div>
 
         <div className="rounded-[28px] border border-surface-200 bg-white p-6 shadow-panel">
