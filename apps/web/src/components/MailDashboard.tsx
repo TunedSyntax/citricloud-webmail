@@ -314,6 +314,7 @@ export function MailDashboard({
   const [userLabels, setUserLabels] = useState<UserLabel[]>([]);
   const [messageLabelAssignments, setMessageLabelAssignments] = useState<MessageLabelAssignments>({});
   const [labelEditor, setLabelEditor] = useState<LabelEditorState | null>(null);
+  const [missingLabelsModalOpen, setMissingLabelsModalOpen] = useState(false);
   const [composerDraft, setComposerDraft] = useState<ComposeDraft | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: MessagePreview } | null>(null);
@@ -2015,18 +2016,47 @@ export function MailDashboard({
             >
               Unstarred
             </button>
-            <button
-              className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                promptAssignLabelToMessages([contextMenu.message]);
-                setLabelsOpen(true);
-                setContextMenu(null);
-              }}
-            >
-              Assign Label
-            </button>
+            {userLabels.length ? (
+              <div className="mt-2 border-t border-surface-200 pt-2">
+                <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-surface-400">Mail labels</p>
+                <div className="space-y-1">
+                  {userLabels.map((label) => {
+                    const LabelIcon = LABEL_ICONS[label.iconIndex % LABEL_ICONS.length];
+                    const labelColor = LABEL_COLOR_PALETTE[label.colorIndex % LABEL_COLOR_PALETTE.length];
+                    const isAssigned = getMessageLabelIds(contextMenu.message).includes(label.id);
+                    return (
+                      <button
+                        key={label.id}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          assignLabelToMessages([contextMenu.message], label.id);
+                          setLabelsOpen(true);
+                          setContextMenu(null);
+                        }}
+                      >
+                        <LabelIcon className={`h-4 w-4 shrink-0 ${labelColor.iconClass}`} />
+                        <span className="min-w-0 flex-1 truncate">{label.name}</span>
+                        {isAssigned ? <Check className="h-4 w-4 shrink-0 text-brand-600" /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <button
+                className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setMissingLabelsModalOpen(true);
+                  setContextMenu(null);
+                }}
+              >
+                Assign to Mail Label
+              </button>
+            )}
             <button
               className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
               type="button"
@@ -2132,6 +2162,45 @@ export function MailDashboard({
                   onClick={saveLabelEditor}
                 >
                   {labelEditor.mode === "create" ? "Create label" : "Save changes"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {missingLabelsModalOpen ? (
+        <>
+          <div className="fixed inset-0 z-40 bg-surface-900/35 backdrop-blur-sm" onMouseDown={() => setMissingLabelsModalOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-md rounded-[28px] border border-surface-200 bg-white p-6 shadow-panel"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-rose-500">Mail Labels Missing</p>
+              <h3 className="mt-2 text-xl font-semibold text-surface-900">No mail labels exist yet</h3>
+              <p className="mt-2 text-sm leading-6 text-surface-500">
+                Create a mail label first from the Labels section in the left sidebar. Click Create, choose a name and icon,
+                then right-click a message again to assign that label.
+              </p>
+              <div className="mt-6 flex items-center justify-end gap-3">
+                <button
+                  className="rounded-2xl border border-surface-200 px-4 py-2.5 text-sm font-medium text-surface-600 hover:bg-surface-50"
+                  type="button"
+                  onClick={() => setMissingLabelsModalOpen(false)}
+                >
+                  Close
+                </button>
+                <button
+                  className="rounded-2xl bg-brand-400 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500"
+                  type="button"
+                  onClick={() => {
+                    setMissingLabelsModalOpen(false);
+                    setLabelsOpen(true);
+                    openCreateUserLabelEditor("NewLabel");
+                  }}
+                >
+                  Create mail label
                 </button>
               </div>
             </div>
