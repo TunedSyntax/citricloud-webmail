@@ -149,11 +149,20 @@ jobs:
           fi
 
           mkdir -p "$HOME/.kube"
-          if echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config" 2>/dev/null; then
+
+          validate_kubeconfig() {
+            KUBECONFIG="$1" kubectl config view >/dev/null 2>&1
+          }
+
+          if printf '%s' "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config" 2>/dev/null && validate_kubeconfig "$HOME/.kube/config"; then
             echo "Decoded base64 kubeconfig."
-          else
-            echo "$KUBE_CONFIG_DATA" > "$HOME/.kube/config"
+          elif printf '%s' "$KUBE_CONFIG_DATA" > "$HOME/.kube/config" && validate_kubeconfig "$HOME/.kube/config"; then
             echo "Using raw kubeconfig content."
+          elif printf '%s' "$KUBE_CONFIG_DATA" | jq -r 'if type == "array" then .[] else error("not array") end' > "$HOME/.kube/config" 2>/dev/null && validate_kubeconfig "$HOME/.kube/config"; then
+            echo "Using kubeconfig content from JSON array."
+          else
+            echo "KUBE_CONFIG_DATA is not valid base64, raw kubeconfig, or JSON-array kubeconfig content." >&2
+            exit 1
           fi
 
           chmod 600 "$HOME/.kube/config"
@@ -249,11 +258,20 @@ jobs:
           fi
 
           mkdir -p "$HOME/.kube"
-          if echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config" 2>/dev/null; then
+
+          validate_kubeconfig() {
+            KUBECONFIG="$1" kubectl config view >/dev/null 2>&1
+          }
+
+          if printf '%s' "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config" 2>/dev/null && validate_kubeconfig "$HOME/.kube/config"; then
             echo "Decoded base64 kubeconfig."
-          else
-            echo "$KUBE_CONFIG_DATA" > "$HOME/.kube/config"
+          elif printf '%s' "$KUBE_CONFIG_DATA" > "$HOME/.kube/config" && validate_kubeconfig "$HOME/.kube/config"; then
             echo "Using raw kubeconfig content."
+          elif printf '%s' "$KUBE_CONFIG_DATA" | jq -r 'if type == "array" then .[] else error("not array") end' > "$HOME/.kube/config" 2>/dev/null && validate_kubeconfig "$HOME/.kube/config"; then
+            echo "Using kubeconfig content from JSON array."
+          else
+            echo "KUBE_CONFIG_DATA is not valid base64, raw kubeconfig, or JSON-array kubeconfig content." >&2
+            exit 1
           fi
 
           chmod 600 "$HOME/.kube/config"
@@ -349,11 +367,20 @@ jobs:
           fi
 
           mkdir -p "$HOME/.kube"
-          if echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config" 2>/dev/null; then
+
+          validate_kubeconfig() {
+            KUBECONFIG="$1" kubectl config view >/dev/null 2>&1
+          }
+
+          if printf '%s' "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config" 2>/dev/null && validate_kubeconfig "$HOME/.kube/config"; then
             echo "Decoded base64 kubeconfig."
-          else
-            echo "$KUBE_CONFIG_DATA" > "$HOME/.kube/config"
+          elif printf '%s' "$KUBE_CONFIG_DATA" > "$HOME/.kube/config" && validate_kubeconfig "$HOME/.kube/config"; then
             echo "Using raw kubeconfig content."
+          elif printf '%s' "$KUBE_CONFIG_DATA" | jq -r 'if type == "array" then .[] else error("not array") end' > "$HOME/.kube/config" 2>/dev/null && validate_kubeconfig "$HOME/.kube/config"; then
+            echo "Using kubeconfig content from JSON array."
+          else
+            echo "KUBE_CONFIG_DATA is not valid base64, raw kubeconfig, or JSON-array kubeconfig content." >&2
+            exit 1
           fi
 
           chmod 600 "$HOME/.kube/config"
