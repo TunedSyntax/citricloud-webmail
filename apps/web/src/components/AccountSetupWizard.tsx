@@ -114,7 +114,7 @@ export function AccountSetupWizard({ onAuthenticated, onResumeAccount, recentAcc
             <div className="rounded-[28px] border border-surface-200 bg-white/80 p-5 shadow-panel">
               <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.24em] text-brand-700">
                 <History className="h-4 w-4" />
-                Saved sessions
+                Active sessions ({recentAccounts.length})
               </div>
               <div className="mt-4 grid gap-3">
                 {recentAccounts.map((account) => (

@@ -78,22 +78,42 @@ export default function App() {
 
   useEffect(() => {
     const storedAccounts = readSavedAccounts();
-    setSavedAccounts(storedAccounts);
 
-    const activeToken = readActiveAccountToken();
-    if (!activeToken) {
-      setIsRestoringAccount(false);
-      return;
-    }
-
-    const matchingAccount = storedAccounts.find((account) => account.session.token === activeToken);
-    if (!matchingAccount) {
+    if (!storedAccounts.length) {
+      setSavedAccounts([]);
       writeActiveAccountToken(null);
       setIsRestoringAccount(false);
       return;
     }
 
-    void resumeSavedAccount(activeToken, storedAccounts);
+    void (async () => {
+      const validationResults = await Promise.allSettled(
+        storedAccounts.map(async (account) => {
+          const response = await getFolders(account.session.token);
+          return {
+            session: account.session,
+            folders: response.folders
+          } satisfies SavedAccount;
+        })
+      );
+
+      const activeAccounts = validationResults
+        .filter((result): result is PromiseFulfilledResult<SavedAccount> => result.status === "fulfilled")
+        .map((result) => result.value)
+        .sort((left, right) => Date.parse(right.session.createdAt) - Date.parse(left.session.createdAt));
+
+      setSavedAccounts(activeAccounts);
+      writeSavedAccounts(activeAccounts);
+      writeActiveAccountToken(null);
+
+      if (validationResults.some((result) => result.status === "rejected")) {
+        setRestoreError("One or more saved sessions expired and were removed.");
+      } else {
+        setRestoreError(null);
+      }
+
+      setIsRestoringAccount(false);
+    })();
   }, []);
 
   async function resumeSavedAccount(token: string, sourceAccounts = savedAccounts) {
