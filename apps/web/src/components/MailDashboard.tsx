@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
   Bell,
@@ -271,6 +271,31 @@ function openAttachment(contentBase64: string, contentType: string, filename: st
   window.setTimeout(() => URL.revokeObjectURL(url), 5_000);
 }
 
+function playNotificationTone() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const audioContext = new window.AudioContext();
+  const oscillator = audioContext.createOscillator();
+  const gain = audioContext.createGain();
+
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+
+  gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.12, audioContext.currentTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.22);
+
+  oscillator.start();
+  oscillator.stop(audioContext.currentTime + 0.24);
+  oscillator.onended = () => {
+    void audioContext.close();
+  };
+}
+
 function resolveFolderPath(folders: MailFolder[], candidates: string[]) {
   const normalizedCandidates = candidates.map((candidate) => candidate.toLowerCase());
   const exactMatch = folders.find((folder) => normalizedCandidates.includes(folder.path.toLowerCase()) || normalizedCandidates.includes(folder.name.toLowerCase()));
@@ -315,6 +340,10 @@ export function MailDashboard({
   const [messageLabelAssignments, setMessageLabelAssignments] = useState<MessageLabelAssignments>({});
   const [labelEditor, setLabelEditor] = useState<LabelEditorState | null>(null);
   const [missingLabelsModalOpen, setMissingLabelsModalOpen] = useState(false);
+  const [messageLimit, setMessageLimit] = useState(25);
+  const [selectMenuOpen, setSelectMenuOpen] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [composerDraft, setComposerDraft] = useState<ComposeDraft | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: MessagePreview } | null>(null);
@@ -326,6 +355,9 @@ export function MailDashboard({
   const gridRef = useRef<HTMLDivElement | null>(null);
   const contentGridRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const knownMessageKeysByFolderRef = useRef<Record<string, string[]>>({});
+  const queryClient = useQueryClient();
   const userLabelsStorageKey = `${userLabelsStorageKeyPrefix}.${session.email.toLowerCase()}`;
   const messageLabelAssignmentsStorageKey = `${messageLabelAssignmentsStorageKeyPrefix}.${session.email.toLowerCase()}`;
 
@@ -340,8 +372,8 @@ export function MailDashboard({
   });
 
   const messagesQuery = useQuery({
-    queryKey: ["messages", session.token, activeFolder],
-    queryFn: () => getMessages(session.token, activeFolder),
+    queryKey: ["messages", session.token, activeFolder, messageLimit],
+    queryFn: () => getMessages(session.token, activeFolder, messageLimit),
     staleTime: 0,
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
@@ -413,13 +445,61 @@ export function MailDashboard({
   const updateFlagsMutation = useMutation({
     mutationFn: (payload: { folder: string; uid: number; unread?: boolean; flagged?: boolean }) =>
       updateMessageFlagsRequest(session.token, payload),
+    onMutate: async (payload) => {
+      await queryClient.cancelQueries({ queryKey: ["messages", session.token, activeFolder, messageLimit] });
+      await queryClient.cancelQueries({ queryKey: ["message", session.token, selectedMessageFolder, selectedUid] });
+
+      const previousMessages = queryClient.getQueryData<{ messages: MessagePreview[] }>(["messages", session.token, activeFolder, messageLimit]);
+      const previousDetail = queryClient.getQueryData<{ message: MessageDetail }>(["message", session.token, selectedMessageFolder, selectedUid]);
+
+      queryClient.setQueryData<{ messages: MessagePreview[] }>(["messages", session.token, activeFolder, messageLimit], (current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+          messages: current.messages.map((message) => {
+            if (message.uid !== payload.uid || message.folder !== payload.folder) {
+              return message;
+            }
+
+            return {
+              ...message,
+              unread: payload.unread ?? message.unread,
+              flagged: payload.flagged ?? message.flagged
+            };
+          })
+        };
+      });
+
+      queryClient.setQueryData<{ message: MessageDetail }>(["message", session.token, selectedMessageFolder, selectedUid], (current) => {
+        if (!current || current.message.uid !== payload.uid) {
+          return current;
+        }
+
+        return {
+          ...current,
+          message: {
+            ...current.message,
+            unread: payload.unread ?? current.message.unread
+          }
+        };
+      });
+
+      return { previousMessages, previousDetail };
+    },
     onSuccess: () => {
-      messagesQuery.refetch();
-      selectedMessageQuery.refetch();
       setActionError(null);
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _variables, context) => {
       setActionError(error.message || "Unable to update message state.");
+      if (context?.previousMessages) {
+        queryClient.setQueryData(["messages", session.token, activeFolder, messageLimit], context.previousMessages);
+      }
+      if (context?.previousDetail) {
+        queryClient.setQueryData(["message", session.token, selectedMessageFolder, selectedUid], context.previousDetail);
+      }
     }
   });
 
@@ -525,6 +605,10 @@ export function MailDashboard({
   useEffect(() => {
     setSelectedMessageKeys(new Set());
     setDragMoveMode(false);
+    setSelectionMode(false);
+    setSelectMenuOpen(false);
+    setMessageLimit(25);
+    setIsLoadingMore(false);
   }, [activeFolder]);
 
   useEffect(() => {
@@ -532,6 +616,28 @@ export function MailDashboard({
       setDragMoveMode(false);
     }
   }, [selectedMessageKeys]);
+
+  useEffect(() => {
+    if (!messagesQuery.isFetching) {
+      setIsLoadingMore(false);
+    }
+  }, [messagesQuery.isFetching]);
+
+  useEffect(() => {
+    const currentMessages = messagesQuery.data?.messages ?? [];
+    const currentKeys = currentMessages.map((message) => toMessageKey(message.folder, message.uid));
+    const previousKeys = knownMessageKeysByFolderRef.current[activeFolder] ?? [];
+
+    if (previousKeys.length && currentKeys.length) {
+      const previousFirst = previousKeys[0];
+      const currentFirst = currentKeys[0];
+      if (previousFirst !== currentFirst) {
+        playNotificationTone();
+      }
+    }
+
+    knownMessageKeysByFolderRef.current[activeFolder] = currentKeys;
+  }, [activeFolder, messagesQuery.data?.messages]);
 
   useEffect(() => {
     if (!resizeTarget) {
@@ -1054,6 +1160,34 @@ export function MailDashboard({
   const runFolderSync = () => {
     foldersQuery.refetch();
     messagesQuery.refetch();
+  };
+
+  const runMessagesSync = () => {
+    messagesQuery.refetch();
+  };
+
+  const startSelectionMode = () => {
+    setSelectionMode(true);
+    setSelectedMessageKeys(new Set());
+    setSelectMenuOpen(false);
+  };
+
+  const selectAllVisibleMessages = () => {
+    setSelectionMode(true);
+    setSelectedMessageKeys(new Set(filteredMessages.map((message) => toMessageKey(message.folder, message.uid))));
+    setSelectMenuOpen(false);
+  };
+
+  const handleListScroll = (event: UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+    const loadedMessageCount = messagesQuery.data?.messages.length ?? 0;
+    const canLoadMore = loadedMessageCount >= messageLimit;
+
+    if (distanceFromBottom < 80 && canLoadMore && !messagesQuery.isFetching && !isLoadingMore) {
+      setIsLoadingMore(true);
+      setMessageLimit((current) => current + 25);
+    }
   };
 
   const toggleMessageSelection = (message: MessagePreview) => {
@@ -1604,9 +1738,37 @@ export function MailDashboard({
                 <p className="text-xs text-surface-500">{filteredMessages.length} messages</p>
                 {selectedMessageKeys.size ? <p className="text-xs text-brand-700">{selectedMessageKeys.size} selected</p> : null}
               </div>
+              <button
+                className="inline-flex items-center rounded-xl border border-brand-200 bg-white p-2 text-brand-700 hover:bg-brand-50"
+                title="Refresh list"
+                type="button"
+                onClick={runMessagesSync}
+              >
+                <RefreshCcw className={`h-4 w-4 ${messagesQuery.isFetching ? "animate-spin" : ""}`} />
+              </button>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 border-b border-surface-200 px-3 py-2">
+              <div className="relative">
+                <button
+                  className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs ${selectionMode ? "border-brand-300 bg-brand-50 text-brand-700" : "border-brand-200 text-brand-700 hover:bg-brand-50"}`}
+                  type="button"
+                  onClick={() => setSelectMenuOpen((current) => !current)}
+                >
+                  Select
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                {selectMenuOpen ? (
+                  <div className="absolute left-0 top-[calc(100%+0.35rem)] z-20 w-36 rounded-xl border border-surface-200 bg-white p-1 shadow-panel">
+                    <button className="block w-full rounded-lg px-3 py-2 text-left text-xs text-surface-700 hover:bg-surface-50" type="button" onClick={startSelectionMode}>
+                      Select
+                    </button>
+                    <button className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-xs text-surface-700 hover:bg-surface-50" type="button" onClick={selectAllVisibleMessages}>
+                      Select All
+                    </button>
+                  </div>
+                ) : null}
+              </div>
               <button
                 className={`rounded-xl border border-brand-200 px-2.5 py-1.5 text-xs ${filterUnread ? "bg-brand-400 text-white" : "text-brand-700 hover:bg-brand-50"}`}
                 type="button"
@@ -1698,23 +1860,30 @@ export function MailDashboard({
               </div> : null}
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto hide-scrollbar">
+            <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto hide-scrollbar" onScroll={handleListScroll}>
               {filteredMessages.map((message) => {
                 const messageLabelIds = getMessageLabelIds(message);
                 const messageLabels = messageLabelIds
                   .map((labelId) => userLabelMap.get(labelId))
                   .filter((label): label is UserLabel => Boolean(label));
+                const primaryLabel = messageLabels[0];
+                const extraLabelCount = Math.max(0, messageLabels.length - 1);
+                const primaryLabelColor = primaryLabel ? LABEL_COLOR_PALETTE[primaryLabel.colorIndex % LABEL_COLOR_PALETTE.length] : null;
+                const PrimaryLabelIcon = primaryLabel ? LABEL_ICONS[primaryLabel.iconIndex % LABEL_ICONS.length] : null;
 
                 return (
                   <div
                     key={message.uid}
-                    className={`flex w-full items-center gap-2.5 border-b border-surface-100 px-3 py-2 text-left transition hover:bg-brand-50 ${
+                    className={`flex h-[72px] w-full items-center gap-2 border-b border-surface-100 px-3 py-2 text-left transition hover:bg-brand-50 ${
                       selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || selectedUid === message.uid ? "bg-brand-50" : "bg-white"
                     }`}
                     role="button"
                     tabIndex={0}
-                    draggable={selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || dragMoveMode}
+                    draggable={selectionMode && (selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || dragMoveMode)}
                     onDragStart={(event) => {
+                      if (!selectionMode) {
+                        return;
+                      }
                       if (!selectedMessageKeys.has(toMessageKey(message.folder, message.uid))) {
                         setSelectedMessageKeys(new Set([toMessageKey(message.folder, message.uid)]));
                       }
@@ -1745,21 +1914,23 @@ export function MailDashboard({
                       });
                     }}
                   >
-                    <button
-                      className="rounded p-0.5"
-                      type="button"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        toggleMessageSelection(message);
-                      }}
-                    >
-                      {selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) ? (
-                        <CheckSquare className="h-4 w-4 text-brand-600" />
-                      ) : (
-                        <Square className="h-4 w-4 text-surface-300" />
-                      )}
-                    </button>
+                    {selectionMode ? (
+                      <button
+                        className="rounded p-0.5"
+                        type="button"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          toggleMessageSelection(message);
+                        }}
+                      >
+                        {selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) ? (
+                          <CheckSquare className="h-4 w-4 text-brand-600" />
+                        ) : (
+                          <Square className="h-4 w-4 text-surface-300" />
+                        )}
+                      </button>
+                    ) : null}
                     <div className="flex items-center gap-1">
                       <div className={`h-2.5 w-2.5 rounded-full ${message.unread ? "bg-brand-600" : "bg-surface-200"}`} />
                       <button
@@ -1783,32 +1954,29 @@ export function MailDashboard({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <p className={`truncate text-xs text-surface-700 ${message.unread ? "font-medium" : "font-normal"}`}>{message.from}</p>
+                        <p title={message.from} className={`truncate text-xs text-surface-700 ${message.unread ? "font-medium" : "font-normal"}`}>{message.from}</p>
                         <p className="shrink-0 text-xs text-surface-500">{message.date ? new Date(message.date).toLocaleDateString() : "Now"}</p>
                       </div>
-                      <div className="mt-0.5 flex items-start gap-1.5">
-                        <p className={`break-words text-sm leading-5 text-surface-900 ${message.unread ? "font-semibold" : "font-normal"}`}>{message.subject}</p>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <p title={message.subject} className={`min-w-0 flex-1 truncate text-sm leading-5 text-surface-900 ${message.unread ? "font-semibold" : "font-normal"}`}>{message.subject}</p>
+                        {primaryLabel && PrimaryLabelIcon && primaryLabelColor ? (
+                          <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${primaryLabelColor.badgeClass}`}>
+                            <PrimaryLabelIcon className="h-3 w-3" />
+                            <span className="max-w-[72px] truncate">{primaryLabel.name}</span>
+                            {extraLabelCount ? <span>+{extraLabelCount}</span> : null}
+                          </span>
+                        ) : null}
                         {message.hasAttachments ? <Paperclip className="mt-0.5 h-3 w-3 shrink-0 text-surface-500" /> : null}
                       </div>
-                      {messageLabels.length ? (
-                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          {messageLabels.map((label) => {
-                            const labelColor = LABEL_COLOR_PALETTE[label.colorIndex % LABEL_COLOR_PALETTE.length];
-                            return (
-                              <span
-                                key={label.id}
-                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${labelColor.badgeClass}`}
-                              >
-                                {label.name}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      ) : null}
                     </div>
                   </div>
                 );
               })}
+              {isLoadingMore ? (
+                <div className="flex items-center justify-center py-4">
+                  <RefreshCcw className="h-4 w-4 animate-spin text-brand-500" />
+                </div>
+              ) : null}
             </div>
 
             {isRightPane && allowDesktopResize ? (

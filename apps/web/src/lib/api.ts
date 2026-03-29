@@ -165,8 +165,8 @@ export function getFolders(token: string) {
   });
 }
 
-export function getMessages(token: string, folder: string) {
-  return request<{ messages: MessagePreview[] }>(`/api/messages?folder=${encodeURIComponent(folder)}`, {
+export function getMessages(token: string, folder: string, limit = 25) {
+  return request<{ messages: MessagePreview[] }>(`/api/messages?folder=${encodeURIComponent(folder)}&limit=${encodeURIComponent(String(limit))}`, {
     headers: authHeaders(token)
   });
 }
