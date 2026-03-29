@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Flag,
   FolderPlus,
+  Forward,
   Globe,
   Heart,
   Inbox,
@@ -20,6 +21,7 @@ import {
   LogOut,
   MapPin,
   Megaphone,
+  MoreVertical,
   PanelBottom,
   PanelRight,
   Paperclip,
@@ -352,6 +354,7 @@ export function MailDashboard({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [composerDraft, setComposerDraft] = useState<ComposeDraft | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [messageHeaderMenuOpen, setMessageHeaderMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: MessagePreview } | null>(null);
   const [selectedMessageSourceFolder, setSelectedMessageSourceFolder] = useState<string | null>(null);
   const [selectedMessageKeys, setSelectedMessageKeys] = useState<Set<string>>(new Set());
@@ -454,13 +457,27 @@ export function MailDashboard({
     onMutate: async (payload) => {
       await queryClient.cancelQueries({ queryKey: ["messages", session.token, activeFolder, messageLimit] });
       await queryClient.cancelQueries({ queryKey: ["message", session.token, selectedMessageFolder, selectedUid] });
+      if (payload.flagged !== undefined && activeFolder !== "__STARRED__") {
+        await queryClient.cancelQueries({ queryKey: ["messages", session.token, "__STARRED__", messageLimit] });
+      }
 
       const previousMessages = queryClient.getQueryData<{ messages: MessagePreview[] }>(["messages", session.token, activeFolder, messageLimit]);
       const previousDetail = queryClient.getQueryData<{ message: MessageDetail }>(["message", session.token, selectedMessageFolder, selectedUid]);
+      const previousStarred = payload.flagged !== undefined && activeFolder !== "__STARRED__" 
+        ? queryClient.getQueryData<{ messages: MessagePreview[] }>(["messages", session.token, "__STARRED__", messageLimit])
+        : undefined;
 
       queryClient.setQueryData<{ messages: MessagePreview[] }>(["messages", session.token, activeFolder, messageLimit], (current) => {
         if (!current) {
           return current;
+        }
+
+        // If unflagging in Starred folder, remove the message
+        if (activeFolder === "__STARRED__" && payload.flagged === false) {
+          return {
+            ...current,
+            messages: current.messages.filter((message) => !(message.uid === payload.uid && message.folder === payload.folder))
+          };
         }
 
         return {
@@ -479,6 +496,26 @@ export function MailDashboard({
         };
       });
 
+      // If flagging a message, also add it to Starred folder cache
+      if (payload.flagged === true && activeFolder !== "__STARRED__") {
+        const sourceMessage = (previousMessages?.messages ?? []).find((m) => m.uid === payload.uid && m.folder === payload.folder);
+        if (sourceMessage && previousStarred) {
+          queryClient.setQueryData<{ messages: MessagePreview[] }>(["messages", session.token, "__STARRED__", messageLimit], (current) => {
+            if (!current) {
+              return current;
+            }
+            const isDuplicate = current.messages.some((m) => m.uid === payload.uid && m.folder === payload.folder);
+            if (isDuplicate) {
+              return current;
+            }
+            return {
+              ...current,
+              messages: [{ ...sourceMessage, flagged: true }, ...current.messages].slice(0, messageLimit)
+            };
+          });
+        }
+      }
+
       queryClient.setQueryData<{ message: MessageDetail }>(["message", session.token, selectedMessageFolder, selectedUid], (current) => {
         if (!current || current.message.uid !== payload.uid) {
           return current;
@@ -488,12 +525,13 @@ export function MailDashboard({
           ...current,
           message: {
             ...current.message,
-            unread: payload.unread ?? current.message.unread
+            unread: payload.unread ?? current.message.unread,
+            flagged: payload.flagged ?? current.message.flagged
           }
         };
       });
 
-      return { previousMessages, previousDetail };
+      return { previousMessages, previousDetail, previousStarred };
     },
     onSuccess: () => {
       setActionError(null);
@@ -505,6 +543,9 @@ export function MailDashboard({
       }
       if (context?.previousDetail) {
         queryClient.setQueryData(["message", session.token, selectedMessageFolder, selectedUid], context.previousDetail);
+      }
+      if (context?.previousStarred) {
+        queryClient.setQueryData(["messages", session.token, "__STARRED__", messageLimit], context.previousStarred);
       }
     }
   });
@@ -1151,6 +1192,24 @@ export function MailDashboard({
       body: buildReplyBody(detail),
       inReplyTo: detail.messageId,
       references: detail.references
+    });
+  };
+
+  const openForwardComposer = () => {
+    if (!detail) {
+      return;
+    }
+
+    const forwardSubject = detail.subject.startsWith("Fwd:") ? detail.subject : `Fwd: ${detail.subject}`;
+    const forwardBody = `\n\n---------- Forwarded message ---------\nFrom: ${detail.from}\nDate: ${detail.date ? new Date(detail.date).toLocaleString() : "Unknown"}\nSubject: ${detail.subject}\nTo: ${detail.to}\n${detail.cc ? `Cc: ${detail.cc}\n` : ""}\n\n${detail.text || detail.html || ""}`;
+
+    setComposerDraft({
+      mode: "compose",
+      to: "",
+      cc: "",
+      bcc: "",
+      subject: forwardSubject,
+      body: forwardBody
     });
   };
 
@@ -2061,25 +2120,111 @@ export function MailDashboard({
                     </button>
                   </div>
                 ) : null}
-                <div className="flex items-start justify-between gap-3 border-b border-surface-200 pb-5">
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-surface-200 pb-5">
                   <div className="min-w-0 flex-1 pr-2">
                     <h3 className="mt-1 break-words text-xl font-semibold leading-tight text-surface-900 sm:text-2xl">{detail.subject}</h3>
                     <p className="mt-3 text-sm text-surface-600">From {detail.from}</p>
                     <p className="text-sm text-surface-500">To {detail.to}</p>
                     {detail.cc ? <p className="text-sm text-surface-500">Cc {detail.cc}</p> : null}
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-2">
+                  <div className="flex shrink-0 flex-col items-end gap-3">
                     <div className="rounded-xl bg-brand-50 px-2.5 py-1.5 text-right text-xs text-brand-700">
                       <p className="whitespace-nowrap">{`${detail.date ? new Date(detail.date).toLocaleString() : "No timestamp"}, ${detail.unread ? "Unread" : "Read"}`}</p>
                     </div>
-                    <button
-                      className="inline-flex items-center gap-2 rounded-2xl bg-brand-400 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500"
-                      type="button"
-                      onClick={openReplyComposer}
-                    >
-                      <Reply className="h-4 w-4" />
-                      Reply
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="inline-flex items-center gap-2 rounded-2xl border border-surface-300 bg-white px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50"
+                        type="button"
+                        onClick={openForwardComposer}
+                        title="Forward"
+                      >
+                        <Forward className="h-4 w-4" />
+                        Forward
+                      </button>
+                      <button
+                        className="rounded-lg border border-surface-300 bg-white p-2 text-surface-700 transition hover:bg-surface-50"
+                        type="button"
+                        onClick={() => deleteSelectedMessage()}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                      <button
+                        className="rounded-lg border border-surface-300 bg-white p-2 text-surface-700 transition hover:bg-surface-50"
+                        type="button"
+                        onClick={() => moveSelectedMessage(archiveFolderPath)}
+                        disabled={!archiveFolderPath}
+                        title="Archive"
+                      >
+                        <Archive className="h-4 w-4" />
+                      </button>
+                      <button
+                        className="rounded-lg border border-surface-300 bg-white p-2 text-surface-700 transition hover:bg-surface-50"
+                        type="button"
+                        onClick={() => moveSelectedMessage(spamFolderPath)}
+                        disabled={!spamFolderPath}
+                        title="Mark as Spam"
+                      >
+                        <Flag className="h-4 w-4" />
+                      </button>
+                      <button
+                        className={`rounded-lg border transition ${detail.flagged ? "border-amber-300 bg-amber-50" : "border-surface-300 bg-white hover:bg-surface-50"}`}
+                        type="button"
+                        onClick={() => updateMessageState({ folder: selectedMessageFolder, uid: selectedUid as number, flagged: !detail.flagged })}
+                        title="Star"
+                      >
+                        <Star className={`h-4 w-4 ${detail.flagged ? "fill-amber-400 text-amber-500" : "text-surface-700"}`} />
+                      </button>
+                      <div className="relative">
+                        <button
+                          className="rounded-lg border border-surface-300 bg-white p-2 text-surface-700 transition hover:bg-surface-50"
+                          type="button"
+                          onClick={() => setMessageHeaderMenuOpen(!messageHeaderMenuOpen)}
+                          title="More options"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                        {messageHeaderMenuOpen ? (
+                          <>
+                            <div className="fixed inset-0 z-40" onMouseDown={() => setMessageHeaderMenuOpen(false)} />
+                            <div
+                              className="absolute right-0 top-full z-50 mt-2 min-w-48 origin-top-right rounded-lg border border-surface-200 bg-white shadow-lg"
+                              onMouseDown={(event) => event.stopPropagation()}
+                            >
+                              <button
+                                className="w-full px-4 py-2 text-left text-sm text-surface-700 hover:bg-surface-50"
+                                type="button"
+                                onClick={() => {
+                                  updateMessageState({ folder: selectedMessageFolder, uid: selectedUid as number, unread: !detail.unread });
+                                  setMessageHeaderMenuOpen(false);
+                                }}
+                              >
+                                {detail.unread ? "Mark as read" : "Mark as unread"}
+                              </button>
+                              <button
+                                className="w-full px-4 py-2 text-left text-sm text-surface-700 hover:bg-surface-50"
+                                type="button"
+                                onClick={() => {
+                                  moveSelectedMessage(inboxFolderPath);
+                                  setMessageHeaderMenuOpen(false);
+                                }}
+                                disabled={!inboxFolderPath}
+                              >
+                                Move to Inbox
+                              </button>
+                            </div>
+                          </>
+                        ) : null}
+                      </div>
+                      <button
+                        className="inline-flex items-center gap-2 rounded-2xl bg-brand-400 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500"
+                        type="button"
+                        onClick={openReplyComposer}
+                      >
+                        <Reply className="h-4 w-4" />
+                        Reply
+                      </button>
+                    </div>
                   </div>
                 </div>
 

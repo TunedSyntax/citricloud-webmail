@@ -61,6 +61,7 @@ export type MessageDetail = {
   text: string;
   html: string | null;
   unread: boolean;
+  flagged: boolean;
   attachments: MessageAttachment[];
 };
 
