@@ -264,12 +264,20 @@ export function MailDashboard({
   const foldersQuery = useQuery({
     queryKey: ["folders", session.token],
     queryFn: () => getFolders(session.token),
-    initialData: { folders: initialFolders }
+    initialData: { folders: initialFolders },
+    staleTime: 0,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true
   });
 
   const messagesQuery = useQuery({
     queryKey: ["messages", session.token, activeFolder],
-    queryFn: () => getMessages(session.token, activeFolder)
+    queryFn: () => getMessages(session.token, activeFolder),
+    staleTime: 0,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true
   });
 
   const availableFolders = foldersQuery.data?.folders ?? initialFolders;
