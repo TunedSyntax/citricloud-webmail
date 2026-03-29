@@ -67,6 +67,15 @@ type MailDashboardProps = {
   onAddAccount: () => void;
 };
 
+type UserLabel = {
+  id: string;
+  name: string;
+  colorIndex: number;
+  iconIndex: number;
+};
+
+type MessageLabelAssignments = Record<string, string[]>;
+
 const sidebarItems = [
   { label: "Inbox", icon: Inbox, fallback: "INBOX" },
   { label: "Starred", icon: Star, fallback: "__STARRED__" },
@@ -82,6 +91,8 @@ const sidebarWidthStorageKey = "citricloud-webmail.sidebar-width";
 const listWidthStorageKey = "citricloud-webmail.list-width";
 const bottomPaneHeightStorageKey = "citricloud-webmail.bottom-pane-height";
 const readingPaneStorageKey = "citricloud-webmail.reading-pane";
+const userLabelsStorageKeyPrefix = "citricloud-webmail.user-labels";
+const messageLabelAssignmentsStorageKeyPrefix = "citricloud-webmail.message-label-assignments";
 const compactBreakpoint = 1024;
 
 function hashString(str: string): number {
@@ -94,14 +105,14 @@ function hashString(str: string): number {
 }
 
 const LABEL_COLOR_PALETTE = [
-  { iconClass: "text-rose-400",    activeClass: "bg-rose-400/20" },
-  { iconClass: "text-amber-400",   activeClass: "bg-amber-400/20" },
-  { iconClass: "text-emerald-400", activeClass: "bg-emerald-400/20" },
-  { iconClass: "text-sky-400",     activeClass: "bg-sky-400/20" },
-  { iconClass: "text-violet-400",  activeClass: "bg-violet-400/20" },
-  { iconClass: "text-pink-400",    activeClass: "bg-pink-400/20" },
-  { iconClass: "text-orange-400",  activeClass: "bg-orange-400/20" },
-  { iconClass: "text-teal-400",    activeClass: "bg-teal-400/20" },
+  { iconClass: "text-rose-400", badgeClass: "border-rose-200 bg-rose-50 text-rose-700" },
+  { iconClass: "text-amber-400", badgeClass: "border-amber-200 bg-amber-50 text-amber-700" },
+  { iconClass: "text-emerald-400", badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+  { iconClass: "text-sky-400", badgeClass: "border-sky-200 bg-sky-50 text-sky-700" },
+  { iconClass: "text-violet-400", badgeClass: "border-violet-200 bg-violet-50 text-violet-700" },
+  { iconClass: "text-pink-400", badgeClass: "border-pink-200 bg-pink-50 text-pink-700" },
+  { iconClass: "text-orange-400", badgeClass: "border-orange-200 bg-orange-50 text-orange-700" },
+  { iconClass: "text-teal-400", badgeClass: "border-teal-200 bg-teal-50 text-teal-700" },
 ] as const;
 
 const LABEL_ICONS = [Tag, Bookmark, Bell, Zap, Globe, Briefcase, Star, ShieldAlert] as const;
@@ -249,6 +260,9 @@ export function MailDashboard({
   const [categoryFilter, setCategoryFilter] = useState<"all" | "ops" | "security" | "billing">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "unread" | "flagged">("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
+  const [userLabels, setUserLabels] = useState<UserLabel[]>([]);
+  const [messageLabelAssignments, setMessageLabelAssignments] = useState<MessageLabelAssignments>({});
   const [composerDraft, setComposerDraft] = useState<ComposeDraft | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: MessagePreview } | null>(null);
@@ -260,6 +274,8 @@ export function MailDashboard({
   const gridRef = useRef<HTMLDivElement | null>(null);
   const contentGridRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const userLabelsStorageKey = `${userLabelsStorageKeyPrefix}.${session.email.toLowerCase()}`;
+  const messageLabelAssignmentsStorageKey = `${messageLabelAssignmentsStorageKeyPrefix}.${session.email.toLowerCase()}`;
 
   const foldersQuery = useQuery({
     queryKey: ["folders", session.token],
@@ -379,7 +395,6 @@ export function MailDashboard({
     mutationFn: (folder: string) => createFolderRequest(session.token, folder),
     onSuccess: () => {
       foldersQuery.refetch();
-      setLabelsOpen(true);
       setActionError(null);
     },
     onError: (error: Error) => {
@@ -531,7 +546,63 @@ export function MailDashboard({
     }
   }, [messagesQuery.data?.messages, selectedUid]);
 
-  const labelFolders = useMemo(() => {
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const labelsRaw = window.localStorage.getItem(userLabelsStorageKey);
+    if (labelsRaw) {
+      try {
+        const parsed = JSON.parse(labelsRaw) as UserLabel[];
+        if (Array.isArray(parsed)) {
+          setUserLabels(parsed);
+        }
+      } catch {
+        setUserLabels([]);
+      }
+    } else {
+      setUserLabels([]);
+    }
+
+    const assignmentsRaw = window.localStorage.getItem(messageLabelAssignmentsStorageKey);
+    if (assignmentsRaw) {
+      try {
+        const parsed = JSON.parse(assignmentsRaw) as MessageLabelAssignments;
+        if (parsed && typeof parsed === "object") {
+          setMessageLabelAssignments(parsed);
+        }
+      } catch {
+        setMessageLabelAssignments({});
+      }
+    } else {
+      setMessageLabelAssignments({});
+    }
+  }, [messageLabelAssignmentsStorageKey, userLabelsStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(userLabelsStorageKey, JSON.stringify(userLabels));
+  }, [userLabels, userLabelsStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(messageLabelAssignmentsStorageKey, JSON.stringify(messageLabelAssignments));
+  }, [messageLabelAssignments, messageLabelAssignmentsStorageKey]);
+
+  useEffect(() => {
+    if (selectedLabelId && !userLabels.some((label) => label.id === selectedLabelId)) {
+      setSelectedLabelId(null);
+    }
+  }, [selectedLabelId, userLabels]);
+
+  const customImapFolders = useMemo(() => {
     const systemFolderNames = ["inbox", "sent", "draft", "trash", "junk", "spam", "archive", "starred"];
 
     return availableFolders.filter((folder) => {
@@ -541,7 +612,98 @@ export function MailDashboard({
     });
   }, [availableFolders]);
 
-  const customImapFolders = labelFolders;
+  const userLabelMap = useMemo(() => {
+    return new Map(userLabels.map((label) => [label.id, label]));
+  }, [userLabels]);
+
+  const getMessageLabelIds = (message: MessagePreview) => {
+    return messageLabelAssignments[toMessageKey(message.folder, message.uid)] ?? [];
+  };
+
+  const createUserLabel = (name: string): UserLabel => {
+    const trimmed = name.trim();
+    const existing = userLabels.find((label) => label.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      return existing;
+    }
+
+    const hash = hashString(trimmed);
+    const newLabel: UserLabel = {
+      id: `${Date.now()}-${hash}`,
+      name: trimmed,
+      colorIndex: hash % LABEL_COLOR_PALETTE.length,
+      iconIndex: hash % LABEL_ICONS.length
+    };
+
+    setUserLabels((current) => [...current, newLabel]);
+    return newLabel;
+  };
+
+  const promptCreateUserLabel = (defaultName = "") => {
+    const name = window.prompt("Enter label name", defaultName)?.trim();
+    if (!name) {
+      return;
+    }
+
+    createUserLabel(name);
+    setLabelsOpen(true);
+  };
+
+  const assignLabelToMessages = (messages: MessagePreview[], labelId: string) => {
+    if (!messages.length) {
+      return;
+    }
+
+    setMessageLabelAssignments((current) => {
+      const next = { ...current };
+      for (const message of messages) {
+        const key = toMessageKey(message.folder, message.uid);
+        const currentLabels = next[key] ?? [];
+        if (!currentLabels.includes(labelId)) {
+          next[key] = [...currentLabels, labelId];
+        }
+      }
+      return next;
+    });
+  };
+
+  const removeLabelsFromMessage = (message: MessagePreview) => {
+    const key = toMessageKey(message.folder, message.uid);
+    setMessageLabelAssignments((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const promptAssignLabelToMessages = (messages: MessagePreview[]) => {
+    if (!messages.length) {
+      return;
+    }
+
+    const existingNames = userLabels.map((label) => label.name).join(", ");
+    const input = window
+      .prompt(existingNames ? `Label name (existing: ${existingNames})` : "Label name", userLabels[0]?.name ?? "")
+      ?.trim();
+
+    if (!input) {
+      return;
+    }
+
+    const label = createUserLabel(input);
+    assignLabelToMessages(messages, label.id);
+  };
+
+  const labelCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    (messagesQuery.data?.messages ?? []).forEach((message) => {
+      const ids = getMessageLabelIds(message);
+      ids.forEach((id) => {
+        counts[id] = (counts[id] ?? 0) + 1;
+      });
+    });
+    return counts;
+  }, [messageLabelAssignments, messagesQuery.data?.messages]);
 
   const filteredMessages = useMemo(() => {
     const now = Date.now();
@@ -561,6 +723,10 @@ export function MailDashboard({
       }
 
       if (statusFilter === "flagged" && !message.flagged) {
+        return false;
+      }
+
+      if (selectedLabelId && !getMessageLabelIds(message).includes(selectedLabelId)) {
         return false;
       }
 
@@ -603,7 +769,7 @@ export function MailDashboard({
       const haystack = `${message.subject} ${message.from} ${message.preview}`.toLowerCase();
       return haystack.includes(searchText.toLowerCase());
     });
-  }, [categoryFilter, dateRange, filterUnread, messagesQuery.data?.messages, searchText, statusFilter]);
+  }, [categoryFilter, dateRange, filterUnread, messageLabelAssignments, messagesQuery.data?.messages, searchText, selectedLabelId, statusFilter]);
 
   const detail = selectedMessageQuery.data?.message;
   const switchableAccounts = savedAccounts.filter((account) => account.session.token !== session.token);
@@ -669,10 +835,6 @@ export function MailDashboard({
         break;
     }
 
-    if (labelFolders.some((folder) => folder.path === activeFolder)) {
-      return "Labels";
-    }
-
     if (spamFolderPath && activeFolder === spamFolderPath) {
       return "Spam";
     }
@@ -687,7 +849,7 @@ export function MailDashboard({
 
     const matched = sidebarItems.find((item) => item.fallback !== "__STARRED__" && activeFolder === item.fallback);
     return matched?.label ?? "Inbox";
-  }, [activeFolder, archiveFolderPath, availableFolders, inboxFolderPath, labelFolders, spamFolderPath]);
+  }, [activeFolder, archiveFolderPath, availableFolders, inboxFolderPath, spamFolderPath]);
 
   const activeFolderTitle = useMemo(() => {
     if (activeFolder === "__STARRED__") {
@@ -1077,18 +1239,13 @@ export function MailDashboard({
                 <button
                   key={item.label}
                   className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm transition ${
-                    activeSidebarLabel === item.label ? "bg-white text-brand-700" : "bg-white/5 text-white/80 hover:bg-white/10"
+                    (item.label === "Labels" ? labelsOpen : activeSidebarLabel === item.label) ? "bg-white text-brand-700" : "bg-white/5 text-white/80 hover:bg-white/10"
                   }`}
                   type="button"
                   onClick={() => {
                     if (item.label === "Labels") {
                       const nextState = !labelsOpen;
                       setLabelsOpen(nextState);
-                      if (nextState && labelFolders.length && !labelFolders.some((folder) => folder.path === activeFolder)) {
-                        setActiveFolder(labelFolders[0].path);
-                        setSelectedUid(null);
-                        setSelectedMessageSourceFolder(null);
-                      }
                       return;
                     }
                     if (targetFolder) {
@@ -1123,44 +1280,28 @@ export function MailDashboard({
             <div className="mt-2 border-t border-white/15 pt-2">
               <div className="mb-2 flex items-center justify-between px-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-100">Folder labels</p>
-                <button className="text-[11px] text-brand-100 hover:text-white" type="button" onClick={() => promptCreateFolder("NewLabel")}>Create</button>
+                <button className="text-[11px] text-brand-100 hover:text-white" type="button" onClick={() => promptCreateUserLabel("NewLabel")}>Create</button>
               </div>
               <div className="space-y-2">
-                {labelFolders.length ? (
-                  labelFolders.map((folder) => {
-                    const colorIndex = hashString(folder.name) % LABEL_COLOR_PALETTE.length;
-                    const labelColor = LABEL_COLOR_PALETTE[colorIndex];
-                    const LabelIcon = LABEL_ICONS[colorIndex % LABEL_ICONS.length];
-                    const isActive = activeFolder === folder.path;
+                {userLabels.length ? (
+                  userLabels.map((label) => {
+                    const labelColor = LABEL_COLOR_PALETTE[label.colorIndex % LABEL_COLOR_PALETTE.length];
+                    const LabelIcon = LABEL_ICONS[label.iconIndex % LABEL_ICONS.length];
+                    const isActive = selectedLabelId === label.id;
                     return (
                       <button
-                        key={folder.path}
+                        key={label.id}
                         className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm transition ${
                           isActive ? "bg-white text-brand-700" : "bg-white/5 text-white/80 hover:bg-white/10"
                         }`}
                         type="button"
                         onClick={() => {
-                          setActiveFolder(folder.path);
-                          setLabelsOpen(true);
-                          setSelectedUid(null);
-                          setSelectedMessageSourceFolder(null);
-                        }}
-                        onDragOver={(event) => {
-                          if (!dragMoveMode) {
-                            return;
-                          }
-                          event.preventDefault();
-                        }}
-                        onDrop={(event) => {
-                          if (!dragMoveMode) {
-                            return;
-                          }
-                          event.preventDefault();
-                          void dropSelectedToFolder(folder.path);
+                          setSelectedLabelId((current) => (current === label.id ? null : label.id));
                         }}
                       >
                         <LabelIcon className={`h-4 w-4 shrink-0 ${isActive ? "text-brand-600" : labelColor.iconClass}`} />
-                        <span className="truncate">{folder.name}</span>
+                        <span className="truncate">{label.name}</span>
+                        <span className={`ml-auto shrink-0 text-xs ${isActive ? "text-brand-500" : "text-white/60"}`}>{labelCounts[label.id] ?? 0}</span>
                       </button>
                     );
                   })
@@ -1318,6 +1459,14 @@ export function MailDashboard({
               >
                 Move
               </button>
+              <button
+                className="rounded-xl border border-brand-200 px-2.5 py-1.5 text-xs text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+                disabled={!activeSelectedMessages.length}
+                type="button"
+                onClick={() => promptAssignLabelToMessages(activeSelectedMessages)}
+              >
+                Label
+              </button>
               {dragMoveMode ? <p className="text-xs text-brand-700">Drag selected emails to a folder in the left sidebar.</p> : null}
             </div>
 
@@ -1367,94 +1516,116 @@ export function MailDashboard({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto hide-scrollbar">
-              {filteredMessages.map((message) => (
-                <div
-                  key={message.uid}
-                  className={`flex w-full items-center gap-2.5 border-b border-surface-100 px-3 py-2 text-left transition hover:bg-brand-50 ${
-                    selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || selectedUid === message.uid ? "bg-brand-50" : "bg-white"
-                  }`}
-                  role="button"
-                  tabIndex={0}
-                  draggable={selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || dragMoveMode}
-                  onDragStart={(event) => {
-                    if (!selectedMessageKeys.has(toMessageKey(message.folder, message.uid))) {
-                      setSelectedMessageKeys(new Set([toMessageKey(message.folder, message.uid)]));
-                    }
-                    setDragMoveMode(true);
-                    event.dataTransfer.effectAllowed = "move";
-                    event.dataTransfer.setData("text/plain", toMessageKey(message.folder, message.uid));
-                  }}
-                  onClick={() => {
-                    setSelectedUid(message.uid);
-                    setSelectedMessageSourceFolder(message.folder);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
+              {filteredMessages.map((message) => {
+                const messageLabelIds = getMessageLabelIds(message);
+                const messageLabels = messageLabelIds
+                  .map((labelId) => userLabelMap.get(labelId))
+                  .filter((label): label is UserLabel => Boolean(label));
+
+                return (
+                  <div
+                    key={message.uid}
+                    className={`flex w-full items-center gap-2.5 border-b border-surface-100 px-3 py-2 text-left transition hover:bg-brand-50 ${
+                      selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || selectedUid === message.uid ? "bg-brand-50" : "bg-white"
+                    }`}
+                    role="button"
+                    tabIndex={0}
+                    draggable={selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || dragMoveMode}
+                    onDragStart={(event) => {
+                      if (!selectedMessageKeys.has(toMessageKey(message.folder, message.uid))) {
+                        setSelectedMessageKeys(new Set([toMessageKey(message.folder, message.uid)]));
+                      }
+                      setDragMoveMode(true);
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", toMessageKey(message.folder, message.uid));
+                    }}
+                    onClick={() => {
                       setSelectedUid(message.uid);
                       setSelectedMessageSourceFolder(message.folder);
-                    }
-                  }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setSelectedUid(message.uid);
-                    setSelectedMessageSourceFolder(message.folder);
-                    setContextMenu({
-                      x: event.clientX,
-                      y: event.clientY,
-                      message
-                    });
-                  }}
-                >
-                  <button
-                    className="rounded p-0.5"
-                    type="button"
-                    onClick={(event) => {
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedUid(message.uid);
+                        setSelectedMessageSourceFolder(message.folder);
+                      }
+                    }}
+                    onContextMenu={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      toggleMessageSelection(message);
+                      setSelectedUid(message.uid);
+                      setSelectedMessageSourceFolder(message.folder);
+                      setContextMenu({
+                        x: event.clientX,
+                        y: event.clientY,
+                        message
+                      });
                     }}
                   >
-                    {selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) ? (
-                      <CheckSquare className="h-4 w-4 text-brand-600" />
-                    ) : (
-                      <Square className="h-4 w-4 text-surface-300" />
-                    )}
-                  </button>
-                  <div className="flex items-center gap-1">
-                    <div className={`h-2.5 w-2.5 rounded-full ${message.unread ? "bg-brand-600" : "bg-surface-200"}`} />
                     <button
                       className="rounded p-0.5"
                       type="button"
                       onClick={(event) => {
-                        event.stopPropagation();
                         event.preventDefault();
-                        updateMessageState({ folder: message.folder, uid: message.uid, flagged: !message.flagged });
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          updateMessageState({ folder: message.folder, uid: message.uid, flagged: !message.flagged });
-                        }
+                        event.stopPropagation();
+                        toggleMessageSelection(message);
                       }}
                     >
-                      <Star className={`h-3.5 w-3.5 shrink-0 ${message.flagged ? "fill-amber-400 text-amber-500" : "text-surface-300"}`} />
+                      {selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) ? (
+                        <CheckSquare className="h-4 w-4 text-brand-600" />
+                      ) : (
+                        <Square className="h-4 w-4 text-surface-300" />
+                      )}
                     </button>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className={`truncate text-xs text-surface-700 ${message.unread ? "font-medium" : "font-normal"}`}>{message.from}</p>
-                      <p className="shrink-0 text-xs text-surface-500">{message.date ? new Date(message.date).toLocaleDateString() : "Now"}</p>
+                    <div className="flex items-center gap-1">
+                      <div className={`h-2.5 w-2.5 rounded-full ${message.unread ? "bg-brand-600" : "bg-surface-200"}`} />
+                      <button
+                        className="rounded p-0.5"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          event.preventDefault();
+                          updateMessageState({ folder: message.folder, uid: message.uid, flagged: !message.flagged });
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            updateMessageState({ folder: message.folder, uid: message.uid, flagged: !message.flagged });
+                          }
+                        }}
+                      >
+                        <Star className={`h-3.5 w-3.5 shrink-0 ${message.flagged ? "fill-amber-400 text-amber-500" : "text-surface-300"}`} />
+                      </button>
                     </div>
-                    <div className="mt-0.5 flex items-start gap-1.5">
-                      <p className={`break-words text-sm leading-5 text-surface-900 ${message.unread ? "font-semibold" : "font-normal"}`}>{message.subject}</p>
-                      {message.hasAttachments ? <Paperclip className="mt-0.5 h-3 w-3 shrink-0 text-surface-500" /> : null}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className={`truncate text-xs text-surface-700 ${message.unread ? "font-medium" : "font-normal"}`}>{message.from}</p>
+                        <p className="shrink-0 text-xs text-surface-500">{message.date ? new Date(message.date).toLocaleDateString() : "Now"}</p>
+                      </div>
+                      <div className="mt-0.5 flex items-start gap-1.5">
+                        <p className={`break-words text-sm leading-5 text-surface-900 ${message.unread ? "font-semibold" : "font-normal"}`}>{message.subject}</p>
+                        {message.hasAttachments ? <Paperclip className="mt-0.5 h-3 w-3 shrink-0 text-surface-500" /> : null}
+                      </div>
+                      {messageLabels.length ? (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {messageLabels.map((label) => {
+                            const labelColor = LABEL_COLOR_PALETTE[label.colorIndex % LABEL_COLOR_PALETTE.length];
+                            return (
+                              <span
+                                key={label.id}
+                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${labelColor.badgeClass}`}
+                              >
+                                {label.name}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {isRightPane && allowDesktopResize ? (
@@ -1667,12 +1838,23 @@ export function MailDashboard({
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
-                promptCreateFolder("NewLabel");
+                promptAssignLabelToMessages([contextMenu.message]);
                 setLabelsOpen(true);
                 setContextMenu(null);
               }}
             >
-              Make a new label
+              Assign Label
+            </button>
+            <button
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-50"
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                removeLabelsFromMessage(contextMenu.message);
+                setContextMenu(null);
+              }}
+            >
+              Clear Labels
             </button>
           </div>
         </>
