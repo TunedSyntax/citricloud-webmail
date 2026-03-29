@@ -1178,6 +1178,13 @@ export function MailDashboard({
     setSelectMenuOpen(false);
   };
 
+  const turnSelectionModeOff = () => {
+    setSelectionMode(false);
+    setSelectedMessageKeys(new Set());
+    setDragMoveMode(false);
+    setSelectMenuOpen(false);
+  };
+
   const handleListScroll = (event: UIEvent<HTMLDivElement>) => {
     const target = event.currentTarget;
     const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
@@ -1765,6 +1772,9 @@ export function MailDashboard({
                     </button>
                     <button className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-xs text-surface-700 hover:bg-surface-50" type="button" onClick={selectAllVisibleMessages}>
                       Select All
+                    </button>
+                    <button className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-xs text-surface-700 hover:bg-surface-50" type="button" onClick={turnSelectionModeOff}>
+                      Turn select off
                     </button>
                   </div>
                 ) : null}
