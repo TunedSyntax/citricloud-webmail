@@ -5,21 +5,28 @@ import {
   Bell,
   Bookmark,
   Briefcase,
+  CalendarDays,
   Check,
   CheckSquare,
   CirclePlus,
   ChevronDown,
+  Flag,
   FolderPlus,
   Globe,
+  Heart,
   Inbox,
   LayoutPanelTop,
+  Lightbulb,
   LogOut,
+  MapPin,
+  Megaphone,
   PanelBottom,
   PanelRight,
   Paperclip,
   Pencil,
   RefreshCcw,
   Reply,
+  Rocket,
   Search,
   Send,
   ShieldAlert,
@@ -123,8 +130,42 @@ const LABEL_COLOR_PALETTE = [
   { iconClass: "text-teal-400", badgeClass: "border-teal-200 bg-teal-50 text-teal-700" },
 ] as const;
 
-const LABEL_ICONS = [Tag, Bookmark, Bell, Zap, Globe, Briefcase, Star, ShieldAlert] as const;
-const LABEL_ICON_NAMES = ["tag", "bookmark", "bell", "zap", "globe", "briefcase", "star", "shield"] as const;
+const LABEL_ICONS = [
+  Tag,
+  Bookmark,
+  Bell,
+  Zap,
+  Globe,
+  Briefcase,
+  Star,
+  ShieldAlert,
+  CalendarDays,
+  Flag,
+  Heart,
+  Lightbulb,
+  MapPin,
+  Megaphone,
+  Rocket,
+  Archive
+] as const;
+const LABEL_ICON_NAMES = [
+  "tag",
+  "bookmark",
+  "bell",
+  "zap",
+  "globe",
+  "briefcase",
+  "star",
+  "shield",
+  "calendar",
+  "flag",
+  "heart",
+  "idea",
+  "pin",
+  "announce",
+  "rocket",
+  "archive"
+] as const;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -953,7 +994,7 @@ export function MailDashboard({
     }
 
     const matched = sidebarItems.find((item) => item.fallback !== "__STARRED__" && activeFolder === item.fallback);
-    return matched?.label ?? "Inbox";
+    return matched?.label ?? null;
   }, [activeFolder, archiveFolderPath, availableFolders, inboxFolderPath, selectedLabelId, spamFolderPath]);
 
   const activeFolderTitle = useMemo(() => {
@@ -2043,17 +2084,22 @@ export function MailDashboard({
                 </div>
 
                 <div>
-                  <p className="mb-3 text-sm font-medium text-surface-700">Choose icon</p>
-                  <div className="grid grid-cols-4 gap-3 sm:grid-cols-8">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-surface-700">Choose icon</p>
+                    <div className="rounded-full border border-surface-200 bg-surface-50 px-3 py-1 text-xs text-surface-500">
+                      {LABEL_ICONS.length} icons
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
                     {LABEL_ICONS.map((Icon, index) => {
                       const isActive = labelEditor.iconIndex === index;
                       const color = LABEL_COLOR_PALETTE[index % LABEL_COLOR_PALETTE.length];
                       return (
                         <button
                           key={LABEL_ICON_NAMES[index]}
-                          className={`flex flex-col items-center gap-2 rounded-2xl border px-3 py-3 text-xs transition ${
+                          className={`flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-xs transition ${
                             isActive
-                              ? "border-brand-300 bg-brand-50 text-brand-700"
+                              ? "border-brand-300 bg-brand-50 text-brand-700 shadow-sm"
                               : "border-surface-200 bg-white text-surface-500 hover:border-brand-200 hover:bg-surface-50"
                           }`}
                           type="button"
@@ -2061,8 +2107,10 @@ export function MailDashboard({
                             setLabelEditor((current) => (current ? { ...current, iconIndex: index } : current))
                           }
                         >
-                          <Icon className={`h-5 w-5 ${isActive ? "text-brand-600" : color.iconClass}`} />
-                          <span className="capitalize">{LABEL_ICON_NAMES[index]}</span>
+                          <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${isActive ? "bg-white" : "bg-surface-50"}`}>
+                            <Icon className={`h-5 w-5 ${isActive ? "text-brand-600" : color.iconClass}`} />
+                          </div>
+                          <span className="text-center capitalize leading-4">{LABEL_ICON_NAMES[index]}</span>
                         </button>
                       );
                     })}
