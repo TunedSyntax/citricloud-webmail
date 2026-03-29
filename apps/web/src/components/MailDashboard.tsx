@@ -878,6 +878,10 @@ export function MailDashboard({
   const activeSelectedMessages = selectedMessages.length ? selectedMessages : selectedPreview ? [selectedPreview] : [];
 
   const activeSidebarLabel = useMemo(() => {
+    if (selectedLabelId) {
+      return "Labels";
+    }
+
     if (activeFolder === "__STARRED__") {
       return "Starred";
     }
@@ -915,7 +919,7 @@ export function MailDashboard({
 
     const matched = sidebarItems.find((item) => item.fallback !== "__STARRED__" && activeFolder === item.fallback);
     return matched?.label ?? "Inbox";
-  }, [activeFolder, archiveFolderPath, availableFolders, inboxFolderPath, spamFolderPath]);
+  }, [activeFolder, archiveFolderPath, availableFolders, inboxFolderPath, selectedLabelId, spamFolderPath]);
 
   const activeFolderTitle = useMemo(() => {
     if (selectedLabelId) {
@@ -1312,7 +1316,7 @@ export function MailDashboard({
                 <button
                   key={item.label}
                   className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm transition ${
-                    (item.label === "Labels" ? labelsOpen : activeSidebarLabel === item.label) ? "bg-white text-brand-700" : "bg-white/5 text-white/80 hover:bg-white/10"
+                    activeSidebarLabel === item.label ? "bg-white text-brand-700" : "bg-white/5 text-white/80 hover:bg-white/10"
                   }`}
                   type="button"
                   onClick={() => {
