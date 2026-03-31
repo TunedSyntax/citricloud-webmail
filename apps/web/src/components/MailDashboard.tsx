@@ -2009,8 +2009,7 @@ export function MailDashboard({
                     role="button"
                     tabIndex={0}
                     draggable={selectionMode && (selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || dragMoveMode)}
-                    onMouseEnter={() => prefetchMessageDetail(message)}
-                    onFocus={() => prefetchMessageDetail(message)}
+                    onMouseDown={() => prefetchMessageDetail(message)}
                     onDragStart={(event) => {
                       if (!selectionMode) {
                         return;
@@ -2023,12 +2022,14 @@ export function MailDashboard({
                       event.dataTransfer.setData("text/plain", toMessageKey(message.folder, message.uid));
                     }}
                     onClick={() => {
+                      prefetchMessageDetail(message);
                       setSelectedUid(message.uid);
                       setSelectedMessageSourceFolder(message.folder);
                     }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
+                        prefetchMessageDetail(message);
                         setSelectedUid(message.uid);
                         setSelectedMessageSourceFolder(message.folder);
                       }
