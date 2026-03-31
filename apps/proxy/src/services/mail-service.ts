@@ -254,7 +254,8 @@ export function listStarredMessages(session: MailSession, folders: FolderInfo[],
 
 export function getMessage(session: MailSession, folder: string, uid: number) {
   return withImapClient(session, async (client) => {
-    await client.mailboxOpen(folder);
+    // Open read-only so loading a message never flips unread state implicitly.
+    await client.mailboxOpen(folder, { readOnly: true });
 
     const message = await client.fetchOne(
       uid,

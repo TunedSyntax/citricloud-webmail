@@ -401,7 +401,8 @@ export function MailDashboard({
   const selectedMessageQuery = useQuery({
     queryKey: ["message", session.token, selectedMessageFolder, selectedUid],
     queryFn: () => getMessage(session.token, selectedMessageFolder, selectedUid as number),
-    enabled: selectedUid !== null
+    enabled: selectedUid !== null,
+    staleTime: 2 * 60 * 1000
   });
 
   const versionsQuery = useQuery<EnvironmentVersions>({
@@ -750,13 +751,17 @@ export function MailDashboard({
       return;
     }
 
-    const stillExists = messagesQuery.data.messages.some((message) => message.uid === selectedUid);
+    const stillExists = messagesQuery.data.messages.some(
+      (message) =>
+        message.uid === selectedUid &&
+        (!selectedMessageSourceFolder || message.folder === selectedMessageSourceFolder)
+    );
     if (!stillExists) {
       const firstMessage = messagesQuery.data.messages[0];
       setSelectedUid(firstMessage?.uid ?? null);
       setSelectedMessageSourceFolder(firstMessage?.folder ?? null);
     }
-  }, [messagesQuery.data?.messages, selectedUid]);
+  }, [messagesQuery.data?.messages, selectedMessageSourceFolder, selectedUid]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1418,6 +1423,26 @@ export function MailDashboard({
     setContextMenu(null);
   };
 
+  const isMessageSelected = (message: MessagePreview) => {
+    if (selectedUid !== message.uid) {
+      return false;
+    }
+
+    if (selectedMessageSourceFolder) {
+      return selectedMessageSourceFolder === message.folder;
+    }
+
+    return true;
+  };
+
+  const prefetchMessageDetail = (message: MessagePreview) => {
+    void queryClient.prefetchQuery({
+      queryKey: ["message", session.token, message.folder, message.uid],
+      queryFn: () => getMessage(session.token, message.folder, message.uid),
+      staleTime: 2 * 60 * 1000
+    });
+  };
+
   const isRightPane = readingPane === "right";
   const isListPane = readingPane === "list";
   const allowDesktopResize = !isCompactViewport;
@@ -1977,13 +2002,15 @@ export function MailDashboard({
 
                 return (
                   <div
-                    key={message.uid}
+                    key={toMessageKey(message.folder, message.uid)}
                     className={`group flex h-[72px] w-full items-center gap-2 border-b border-surface-100 px-3 py-2 text-left transition hover:bg-brand-50 ${
-                      selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || selectedUid === message.uid ? "bg-brand-50" : "bg-white"
+                      selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || isMessageSelected(message) ? "bg-brand-50" : "bg-white"
                     }`}
                     role="button"
                     tabIndex={0}
                     draggable={selectionMode && (selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || dragMoveMode)}
+                    onMouseEnter={() => prefetchMessageDetail(message)}
+                    onFocus={() => prefetchMessageDetail(message)}
                     onDragStart={(event) => {
                       if (!selectionMode) {
                         return;
