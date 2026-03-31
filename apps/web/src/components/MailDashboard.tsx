@@ -46,6 +46,7 @@ import {
   deleteMessage as deleteMessageRequest,
   deleteFolder as deleteFolderRequest,
   getFolders,
+  getMessageAttachmentContent,
   getEnvironmentVersions,
   getMessage,
   getMessages,
@@ -60,6 +61,7 @@ import {
   type EnvironmentVersions,
   type MailFolder,
   type MoveBatchItem,
+  type MessageAttachment,
   type MessageDetail,
   type MessagePreview,
   type SendMessagePayload
@@ -361,6 +363,7 @@ export function MailDashboard({
   const [dragMoveMode, setDragMoveMode] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const contentGridRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1443,6 +1446,48 @@ export function MailDashboard({
     });
   };
 
+  const openMessageAttachment = async (attachment: MessageAttachment) => {
+    const cachedContent = attachment.contentBase64;
+    if (cachedContent) {
+      openAttachment(cachedContent, attachment.contentType, attachment.filename);
+      return;
+    }
+
+    if (selectedUid === null) {
+      return;
+    }
+
+    try {
+      setActiveAttachmentId(attachment.id);
+      const response = await getMessageAttachmentContent(session.token, selectedMessageFolder, selectedUid, attachment.id);
+      const fetched = response.attachment;
+
+      queryClient.setQueryData<{ message: MessageDetail }>(["message", session.token, selectedMessageFolder, selectedUid], (current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+          message: {
+            ...current.message,
+            attachments: current.message.attachments.map((item) =>
+              item.id === fetched.id ? { ...item, contentBase64: fetched.contentBase64 } : item
+            )
+          }
+        };
+      });
+
+      openAttachment(fetched.contentBase64, fetched.contentType, fetched.filename);
+      setActionError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to load attachment.";
+      setActionError(message);
+    } finally {
+      setActiveAttachmentId((current) => (current === attachment.id ? null : current));
+    }
+  };
+
   const isRightPane = readingPane === "right";
   const isListPane = readingPane === "list";
   const allowDesktopResize = !isCompactViewport;
@@ -2272,11 +2317,14 @@ export function MailDashboard({
                               <p className="text-xs text-surface-500">{attachment.contentType} · {formatAttachmentSize(attachment.size)}</p>
                             </div>
                             <button
-                              className="rounded-lg border border-brand-200 px-2.5 py-1 text-xs text-brand-700 hover:bg-brand-50"
+                              className="rounded-lg border border-brand-200 px-2.5 py-1 text-xs text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
                               type="button"
-                              onClick={() => openAttachment(attachment.contentBase64, attachment.contentType, attachment.filename)}
+                              onClick={() => {
+                                void openMessageAttachment(attachment);
+                              }}
+                              disabled={activeAttachmentId === attachment.id}
                             >
-                              {isPdf ? "Open PDF" : "Download"}
+                              {activeAttachmentId === attachment.id ? "Loading..." : isPdf ? "Open PDF" : "Download"}
                             </button>
                           </div>
                         );

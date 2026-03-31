@@ -32,6 +32,12 @@ type MessageAttachment = {
   filename: string;
   contentType: string;
   size: number;
+};
+
+type MessageAttachmentContent = {
+  id: string;
+  filename: string;
+  contentType: string;
   contentBase64: string;
 };
 
@@ -356,20 +362,12 @@ export function getMessage(session: MailSession, folder: string, uid: number) {
     }
 
     const parsed = await simpleParser(message.source);
-    const attachments: MessageAttachment[] = parsed.attachments.map((attachment, index) => {
-      const filename = attachment.filename ?? `attachment-${index + 1}`;
-      const contentBase64 = Buffer.isBuffer(attachment.content)
-        ? attachment.content.toString("base64")
-        : Buffer.from(String(attachment.content ?? ""), "utf8").toString("base64");
-
-      return {
-        id: `${message.uid}-${index}`,
-        filename,
-        contentType: attachment.contentType || "application/octet-stream",
-        size: attachment.size,
-        contentBase64
-      };
-    });
+    const attachments: MessageAttachment[] = parsed.attachments.map((attachment, index) => ({
+      id: `${message.uid}-${index}`,
+      filename: attachment.filename ?? `attachment-${index + 1}`,
+      contentType: attachment.contentType || "application/octet-stream",
+      size: attachment.size
+    }));
 
     return {
       uid: message.uid,
@@ -385,6 +383,41 @@ export function getMessage(session: MailSession, folder: string, uid: number) {
       html: typeof parsed.html === "string" ? parsed.html : null,
       unread: !message.flags?.has("\\Seen"),
       attachments
+    };
+  });
+}
+
+export function getMessageAttachmentContent(session: MailSession, folder: string, uid: number, attachmentId: string): Promise<MessageAttachmentContent> {
+  return withImapClient(session, async (client) => {
+    await client.mailboxOpen(folder, { readOnly: true });
+
+    const message = await client.fetchOne(
+      uid,
+      {
+        uid: true,
+        source: true
+      },
+      { uid: true }
+    );
+
+    if (!message || !message.source) {
+      throw new Error("Message not found.");
+    }
+
+    const parsed = await simpleParser(message.source);
+    const attachment = parsed.attachments.find((item, index) => `${message.uid}-${index}` === attachmentId);
+
+    if (!attachment) {
+      throw new Error("Attachment not found.");
+    }
+
+    return {
+      id: attachmentId,
+      filename: attachment.filename ?? attachmentId,
+      contentType: attachment.contentType || "application/octet-stream",
+      contentBase64: Buffer.isBuffer(attachment.content)
+        ? attachment.content.toString("base64")
+        : Buffer.from(String(attachment.content ?? ""), "utf8").toString("base64")
     };
   });
 }
