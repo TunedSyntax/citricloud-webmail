@@ -61,6 +61,18 @@ type FetchedPreviewMessage = {
   bodyStructure?: unknown;
 };
 
+const mailConnectionTimeoutMs = Number.parseInt(process.env.MAIL_CONNECTION_TIMEOUT_MS ?? "8000", 10);
+const mailGreetingTimeoutMs = Number.parseInt(process.env.MAIL_GREETING_TIMEOUT_MS ?? "8000", 10);
+const mailSocketTimeoutMs = Number.parseInt(process.env.MAIL_SOCKET_TIMEOUT_MS ?? "30000", 10);
+const transientDnsRetryCount = Number.parseInt(process.env.MAIL_DNS_RETRY_COUNT ?? "2", 10);
+const transientDnsRetryDelayMs = Number.parseInt(process.env.MAIL_DNS_RETRY_DELAY_MS ?? "600", 10);
+
+type MailOperationError = NodeJS.ErrnoException & {
+  code?: string;
+  syscall?: string;
+  hostname?: string;
+};
+
 function toIsoString(value: Date | string | null | undefined): string | null {
   if (!value) {
     return null;
@@ -101,6 +113,60 @@ function getMailTlsOptions(host: string): TlsOptions {
     rejectUnauthorized: shouldRejectUnauthorized,
     servername: host
   };
+}
+
+function getImapClientOptions(session: Pick<MailSession, "email" | "password" | "imap">) {
+  return {
+    host: session.imap.host,
+    port: session.imap.port,
+    secure: session.imap.secure,
+    auth: {
+      user: session.email,
+      pass: session.password
+    },
+    tls: getMailTlsOptions(session.imap.host),
+    connectionTimeout: mailConnectionTimeoutMs,
+    greetingTimeout: mailGreetingTimeoutMs,
+    socketTimeout: mailSocketTimeoutMs
+  };
+}
+
+function isTransientDnsError(error: unknown, expectedHost: string): error is MailOperationError {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const mailError = error as MailOperationError;
+  return mailError.code === "EAI_AGAIN" && (!mailError.hostname || mailError.hostname === expectedHost);
+}
+
+function normalizeMailError(error: unknown, host: string): Error {
+  if (isTransientDnsError(error, host)) {
+    return new Error(`Temporary DNS lookup failure for ${host}. Please try again.`);
+  }
+
+  return error instanceof Error ? error : new Error("Unexpected mail server error.");
+}
+
+async function sleep(delayMs: number) {
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+async function withTransientDnsRetry<T>(host: string, action: () => Promise<T>): Promise<T> {
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await action();
+    } catch (error) {
+      if (!isTransientDnsError(error, host) || attempt >= transientDnsRetryCount) {
+        throw normalizeMailError(error, host);
+      }
+
+      attempt += 1;
+      await sleep(transientDnsRetryDelayMs * attempt);
+    }
+  }
 }
 
 function bodyStructureHasAttachments(node: unknown): boolean {
@@ -169,22 +235,15 @@ async function fetchFolderMessages(client: ImapFlow, folder: string, limit = 25)
 }
 
 export async function verifyMailAccess(session: Omit<MailSession, "token" | "createdAt">): Promise<void> {
-  const imapClient = new ImapFlow({
-    host: session.imap.host,
-    port: session.imap.port,
-    secure: session.imap.secure,
-    auth: {
-      user: session.email,
-      pass: session.password
-    },
-    tls: getMailTlsOptions(session.imap.host)
-  });
+  await withTransientDnsRetry(session.imap.host, async () => {
+    const imapClient = new ImapFlow(getImapClientOptions(session));
 
-  try {
-    await imapClient.connect();
-  } finally {
-    await imapClient.logout().catch(() => undefined);
-  }
+    try {
+      await imapClient.connect();
+    } finally {
+      await imapClient.logout().catch(() => undefined);
+    }
+  });
 
   const transport = nodemailer.createTransport({
     host: session.smtp.host,
@@ -194,30 +253,29 @@ export async function verifyMailAccess(session: Omit<MailSession, "token" | "cre
       user: session.email,
       pass: session.password
     },
-    tls: getMailTlsOptions(session.smtp.host)
+    tls: getMailTlsOptions(session.smtp.host),
+    connectionTimeout: mailConnectionTimeoutMs,
+    greetingTimeout: mailGreetingTimeoutMs,
+    socketTimeout: mailSocketTimeoutMs,
+    dnsTimeout: mailConnectionTimeoutMs
   });
 
-  await transport.verify();
+  await withTransientDnsRetry(session.smtp.host, async () => {
+    await transport.verify();
+  });
 }
 
 async function withImapClient<T>(session: MailSession, action: (client: ImapFlow) => Promise<T>): Promise<T> {
-  const client = new ImapFlow({
-    host: session.imap.host,
-    port: session.imap.port,
-    secure: session.imap.secure,
-    auth: {
-      user: session.email,
-      pass: session.password
-    },
-    tls: getMailTlsOptions(session.imap.host)
-  });
+  return withTransientDnsRetry(session.imap.host, async () => {
+    const client = new ImapFlow(getImapClientOptions(session));
 
-  try {
-    await client.connect();
-    return await action(client);
-  } finally {
-    await client.logout().catch(() => undefined);
-  }
+    try {
+      await client.connect();
+      return await action(client);
+    } finally {
+      await client.logout().catch(() => undefined);
+    }
+  });
 }
 
 export function listFolders(session: MailSession): Promise<FolderInfo[]> {
