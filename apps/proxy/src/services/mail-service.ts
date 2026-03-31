@@ -61,11 +61,11 @@ type FetchedPreviewMessage = {
   bodyStructure?: unknown;
 };
 
-const mailConnectionTimeoutMs = Number.parseInt(process.env.MAIL_CONNECTION_TIMEOUT_MS ?? "8000", 10);
-const mailGreetingTimeoutMs = Number.parseInt(process.env.MAIL_GREETING_TIMEOUT_MS ?? "8000", 10);
+const mailConnectionTimeoutMs = Number.parseInt(process.env.MAIL_CONNECTION_TIMEOUT_MS ?? "5000", 10);
+const mailGreetingTimeoutMs = Number.parseInt(process.env.MAIL_GREETING_TIMEOUT_MS ?? "5000", 10);
 const mailSocketTimeoutMs = Number.parseInt(process.env.MAIL_SOCKET_TIMEOUT_MS ?? "30000", 10);
 const transientDnsRetryCount = Number.parseInt(process.env.MAIL_DNS_RETRY_COUNT ?? "2", 10);
-const transientDnsRetryDelayMs = Number.parseInt(process.env.MAIL_DNS_RETRY_DELAY_MS ?? "600", 10);
+const transientDnsRetryDelayMs = Number.parseInt(process.env.MAIL_DNS_RETRY_DELAY_MS ?? "300", 10);
 
 type MailOperationError = NodeJS.ErrnoException & {
   code?: string;
@@ -131,18 +131,40 @@ function getImapClientOptions(session: Pick<MailSession, "email" | "password" | 
   };
 }
 
+const transientDnsErrorCodes = new Set(["EAI_AGAIN", "EAI_NODATA", "EAI_NONAME"]);
+const connectionErrorCodes = new Set(["ETIMEDOUT", "ECONNREFUSED", "ECONNRESET", "ENETUNREACH", "EHOSTUNREACH"]);
+
 function isTransientDnsError(error: unknown, expectedHost: string): error is MailOperationError {
   if (!(error instanceof Error)) {
     return false;
   }
 
   const mailError = error as MailOperationError;
-  return mailError.code === "EAI_AGAIN" && (!mailError.hostname || mailError.hostname === expectedHost);
+  return transientDnsErrorCodes.has(mailError.code ?? "") && (!mailError.hostname || mailError.hostname === expectedHost);
+}
+
+function isConnectionError(error: unknown): error is MailOperationError {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const mailError = error as MailOperationError;
+
+  if (connectionErrorCodes.has(mailError.code ?? "")) {
+    return true;
+  }
+
+  const msg = mailError.message.toLowerCase();
+  return msg.includes("timed out") || msg.includes("timeout") || msg.includes("established") || msg.includes("connection was");
 }
 
 function normalizeMailError(error: unknown, host: string): Error {
   if (isTransientDnsError(error, host)) {
     return new Error(`Temporary DNS lookup failure for ${host}. Please try again.`);
+  }
+
+  if (isConnectionError(error)) {
+    return new Error(`Could not connect to mail server (${host}). The server may be unreachable or the port may be blocked.`);
   }
 
   return error instanceof Error ? error : new Error("Unexpected mail server error.");
@@ -235,7 +257,7 @@ async function fetchFolderMessages(client: ImapFlow, folder: string, limit = 25)
 }
 
 export async function verifyMailAccess(session: Omit<MailSession, "token" | "createdAt">): Promise<void> {
-  await withTransientDnsRetry(session.imap.host, async () => {
+  const imapVerify = withTransientDnsRetry(session.imap.host, async () => {
     const imapClient = new ImapFlow(getImapClientOptions(session));
 
     try {
@@ -260,9 +282,11 @@ export async function verifyMailAccess(session: Omit<MailSession, "token" | "cre
     dnsTimeout: mailConnectionTimeoutMs
   });
 
-  await withTransientDnsRetry(session.smtp.host, async () => {
+  const smtpVerify = withTransientDnsRetry(session.smtp.host, async () => {
     await transport.verify();
   });
+
+  await Promise.all([imapVerify, smtpVerify]);
 }
 
 async function withImapClient<T>(session: MailSession, action: (client: ImapFlow) => Promise<T>): Promise<T> {
