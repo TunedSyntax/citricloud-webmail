@@ -45,6 +45,13 @@ export type MessageAttachment = {
   filename: string;
   contentType: string;
   size: number;
+  contentBase64?: string;
+};
+
+export type MessageAttachmentContent = {
+  id: string;
+  filename: string;
+  contentType: string;
   contentBase64: string;
 };
 
@@ -176,6 +183,15 @@ export function getMessage(token: string, folder: string, uid: number) {
   return request<{ message: MessageDetail }>(`/api/messages/${uid}?folder=${encodeURIComponent(folder)}`, {
     headers: authHeaders(token)
   });
+}
+
+export function getMessageAttachmentContent(token: string, folder: string, uid: number, attachmentId: string) {
+  return request<{ attachment: MessageAttachmentContent }>(
+    `/api/messages/${uid}/attachments/${encodeURIComponent(attachmentId)}?folder=${encodeURIComponent(folder)}`,
+    {
+      headers: authHeaders(token)
+    }
+  );
 }
 
 export function deleteMessage(token: string, folder: string, uid: number) {

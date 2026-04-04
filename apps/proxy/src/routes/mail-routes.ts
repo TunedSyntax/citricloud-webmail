@@ -7,6 +7,7 @@ import {
   createFolder,
   deleteMessage,
   deleteFolder,
+  getMessageAttachmentContent,
   getMessage,
   listFolders,
   listMessages,
@@ -216,6 +217,18 @@ router.get("/messages/:uid", async (request, response) => {
     const uid = Number(request.params.uid);
     const message = await getMessage(session, folder, uid);
     response.json({ message });
+  } catch (error) {
+    handleRouteError(error, response);
+  }
+});
+
+router.get("/messages/:uid/attachments/:attachmentId", async (request, response) => {
+  try {
+    const session = await getAuthenticatedSession(request);
+    const folder = request.query.folder?.toString() ?? "INBOX";
+    const uid = Number(request.params.uid);
+    const attachment = await getMessageAttachmentContent(session, folder, uid, request.params.attachmentId);
+    response.json({ attachment });
   } catch (error) {
     handleRouteError(error, response);
   }

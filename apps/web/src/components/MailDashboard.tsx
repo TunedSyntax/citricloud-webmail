@@ -46,6 +46,7 @@ import {
   deleteMessage as deleteMessageRequest,
   deleteFolder as deleteFolderRequest,
   getFolders,
+  getMessageAttachmentContent,
   getEnvironmentVersions,
   getMessage,
   getMessages,
@@ -60,6 +61,7 @@ import {
   type EnvironmentVersions,
   type MailFolder,
   type MoveBatchItem,
+  type MessageAttachment,
   type MessageDetail,
   type MessagePreview,
   type SendMessagePayload
@@ -361,6 +363,7 @@ export function MailDashboard({
   const [dragMoveMode, setDragMoveMode] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const contentGridRef = useRef<HTMLDivElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -401,7 +404,8 @@ export function MailDashboard({
   const selectedMessageQuery = useQuery({
     queryKey: ["message", session.token, selectedMessageFolder, selectedUid],
     queryFn: () => getMessage(session.token, selectedMessageFolder, selectedUid as number),
-    enabled: selectedUid !== null
+    enabled: selectedUid !== null,
+    staleTime: 2 * 60 * 1000
   });
 
   const versionsQuery = useQuery<EnvironmentVersions>({
@@ -750,13 +754,17 @@ export function MailDashboard({
       return;
     }
 
-    const stillExists = messagesQuery.data.messages.some((message) => message.uid === selectedUid);
+    const stillExists = messagesQuery.data.messages.some(
+      (message) =>
+        message.uid === selectedUid &&
+        (!selectedMessageSourceFolder || message.folder === selectedMessageSourceFolder)
+    );
     if (!stillExists) {
       const firstMessage = messagesQuery.data.messages[0];
       setSelectedUid(firstMessage?.uid ?? null);
       setSelectedMessageSourceFolder(firstMessage?.folder ?? null);
     }
-  }, [messagesQuery.data?.messages, selectedUid]);
+  }, [messagesQuery.data?.messages, selectedMessageSourceFolder, selectedUid]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1418,6 +1426,68 @@ export function MailDashboard({
     setContextMenu(null);
   };
 
+  const isMessageSelected = (message: MessagePreview) => {
+    if (selectedUid !== message.uid) {
+      return false;
+    }
+
+    if (selectedMessageSourceFolder) {
+      return selectedMessageSourceFolder === message.folder;
+    }
+
+    return true;
+  };
+
+  const prefetchMessageDetail = (message: MessagePreview) => {
+    void queryClient.prefetchQuery({
+      queryKey: ["message", session.token, message.folder, message.uid],
+      queryFn: () => getMessage(session.token, message.folder, message.uid),
+      staleTime: 2 * 60 * 1000
+    });
+  };
+
+  const openMessageAttachment = async (attachment: MessageAttachment) => {
+    const cachedContent = attachment.contentBase64;
+    if (cachedContent) {
+      openAttachment(cachedContent, attachment.contentType, attachment.filename);
+      return;
+    }
+
+    if (selectedUid === null) {
+      return;
+    }
+
+    try {
+      setActiveAttachmentId(attachment.id);
+      const response = await getMessageAttachmentContent(session.token, selectedMessageFolder, selectedUid, attachment.id);
+      const fetched = response.attachment;
+
+      queryClient.setQueryData<{ message: MessageDetail }>(["message", session.token, selectedMessageFolder, selectedUid], (current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+          message: {
+            ...current.message,
+            attachments: current.message.attachments.map((item) =>
+              item.id === fetched.id ? { ...item, contentBase64: fetched.contentBase64 } : item
+            )
+          }
+        };
+      });
+
+      openAttachment(fetched.contentBase64, fetched.contentType, fetched.filename);
+      setActionError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to load attachment.";
+      setActionError(message);
+    } finally {
+      setActiveAttachmentId((current) => (current === attachment.id ? null : current));
+    }
+  };
+
   const isRightPane = readingPane === "right";
   const isListPane = readingPane === "list";
   const allowDesktopResize = !isCompactViewport;
@@ -1977,13 +2047,14 @@ export function MailDashboard({
 
                 return (
                   <div
-                    key={message.uid}
+                    key={toMessageKey(message.folder, message.uid)}
                     className={`group flex h-[72px] w-full items-center gap-2 border-b border-surface-100 px-3 py-2 text-left transition hover:bg-brand-50 ${
-                      selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || selectedUid === message.uid ? "bg-brand-50" : "bg-white"
+                      selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || isMessageSelected(message) ? "bg-brand-50" : "bg-white"
                     }`}
                     role="button"
                     tabIndex={0}
                     draggable={selectionMode && (selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || dragMoveMode)}
+                    onMouseDown={() => prefetchMessageDetail(message)}
                     onDragStart={(event) => {
                       if (!selectionMode) {
                         return;
@@ -1996,12 +2067,14 @@ export function MailDashboard({
                       event.dataTransfer.setData("text/plain", toMessageKey(message.folder, message.uid));
                     }}
                     onClick={() => {
+                      prefetchMessageDetail(message);
                       setSelectedUid(message.uid);
                       setSelectedMessageSourceFolder(message.folder);
                     }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
+                        prefetchMessageDetail(message);
                         setSelectedUid(message.uid);
                         setSelectedMessageSourceFolder(message.folder);
                       }
@@ -2244,11 +2317,14 @@ export function MailDashboard({
                               <p className="text-xs text-surface-500">{attachment.contentType} · {formatAttachmentSize(attachment.size)}</p>
                             </div>
                             <button
-                              className="rounded-lg border border-brand-200 px-2.5 py-1 text-xs text-brand-700 hover:bg-brand-50"
+                              className="rounded-lg border border-brand-200 px-2.5 py-1 text-xs text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
                               type="button"
-                              onClick={() => openAttachment(attachment.contentBase64, attachment.contentType, attachment.filename)}
+                              onClick={() => {
+                                void openMessageAttachment(attachment);
+                              }}
+                              disabled={activeAttachmentId === attachment.id}
                             >
-                              {isPdf ? "Open PDF" : "Download"}
+                              {activeAttachmentId === attachment.id ? "Loading..." : isPdf ? "Open PDF" : "Download"}
                             </button>
                           </div>
                         );

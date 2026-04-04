@@ -74,26 +74,62 @@ export default function App() {
   const [authState, setAuthState] = useState<AuthState>(null);
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
   const [isRestoringAccount, setIsRestoringAccount] = useState(true);
+  const [lastActiveToken, setLastActiveToken] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
 
   useEffect(() => {
     const storedAccounts = readSavedAccounts();
-    setSavedAccounts(storedAccounts);
-
     const activeToken = readActiveAccountToken();
-    if (!activeToken) {
-      setIsRestoringAccount(false);
-      return;
-    }
+    setLastActiveToken(activeToken);
 
-    const matchingAccount = storedAccounts.find((account) => account.session.token === activeToken);
-    if (!matchingAccount) {
+    if (!storedAccounts.length) {
+      setSavedAccounts([]);
       writeActiveAccountToken(null);
       setIsRestoringAccount(false);
       return;
     }
 
-    void resumeSavedAccount(activeToken, storedAccounts);
+    void (async () => {
+      const validationResults = await Promise.allSettled(
+        storedAccounts.map(async (account) => {
+          const response = await getFolders(account.session.token);
+          return {
+            session: account.session,
+            folders: response.folders
+          } satisfies SavedAccount;
+        })
+      );
+
+      const activeAccounts = validationResults
+        .filter((result): result is PromiseFulfilledResult<SavedAccount> => result.status === "fulfilled")
+        .map((result) => result.value)
+        .sort((left, right) => Date.parse(right.session.createdAt) - Date.parse(left.session.createdAt));
+
+      if (!activeAccounts.length) {
+        const fallbackAccounts = [...storedAccounts].sort(
+          (left, right) => Date.parse(right.session.createdAt) - Date.parse(left.session.createdAt)
+        );
+
+        setSavedAccounts(fallbackAccounts);
+        writeSavedAccounts(fallbackAccounts);
+        writeActiveAccountToken(null);
+        setRestoreError("Unable to validate saved sessions right now. You can still try Resume.");
+        setIsRestoringAccount(false);
+        return;
+      }
+
+      setSavedAccounts(activeAccounts);
+      writeSavedAccounts(activeAccounts);
+      writeActiveAccountToken(null);
+
+      if (validationResults.some((result) => result.status === "rejected")) {
+        setRestoreError("One or more saved sessions expired and were removed.");
+      } else {
+        setRestoreError(null);
+      }
+
+      setIsRestoringAccount(false);
+    })();
   }, []);
 
   async function resumeSavedAccount(token: string, sourceAccounts = savedAccounts) {
@@ -143,6 +179,7 @@ export default function App() {
     setSavedAccounts(nextAccounts);
     writeSavedAccounts(nextAccounts);
     writeActiveAccountToken(payload.session.token);
+    setLastActiveToken(payload.session.token);
     setRestoreError(null);
   };
 
@@ -155,6 +192,10 @@ export default function App() {
 
     if (readActiveAccountToken() === token) {
       writeActiveAccountToken(null);
+    }
+
+    if (lastActiveToken === token) {
+      setLastActiveToken(nextAccounts[0]?.session.token ?? null);
     }
   };
 
@@ -192,6 +233,7 @@ export default function App() {
           />
         ) : (
           <AccountSetupWizard
+            lastActiveToken={lastActiveToken}
             onAuthenticated={handleAuthenticated}
             onResumeAccount={(token) => {
               void resumeSavedAccount(token);

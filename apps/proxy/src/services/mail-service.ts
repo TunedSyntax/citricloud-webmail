@@ -32,6 +32,12 @@ type MessageAttachment = {
   filename: string;
   contentType: string;
   size: number;
+};
+
+type MessageAttachmentContent = {
+  id: string;
+  filename: string;
+  contentType: string;
   contentBase64: string;
 };
 
@@ -59,6 +65,18 @@ type FetchedPreviewMessage = {
   flags?: Set<string>;
   internalDate?: Date | string | null;
   bodyStructure?: unknown;
+};
+
+const mailConnectionTimeoutMs = Number.parseInt(process.env.MAIL_CONNECTION_TIMEOUT_MS ?? "5000", 10);
+const mailGreetingTimeoutMs = Number.parseInt(process.env.MAIL_GREETING_TIMEOUT_MS ?? "5000", 10);
+const mailSocketTimeoutMs = Number.parseInt(process.env.MAIL_SOCKET_TIMEOUT_MS ?? "30000", 10);
+const transientDnsRetryCount = Number.parseInt(process.env.MAIL_DNS_RETRY_COUNT ?? "2", 10);
+const transientDnsRetryDelayMs = Number.parseInt(process.env.MAIL_DNS_RETRY_DELAY_MS ?? "300", 10);
+
+type MailOperationError = NodeJS.ErrnoException & {
+  code?: string;
+  syscall?: string;
+  hostname?: string;
 };
 
 function toIsoString(value: Date | string | null | undefined): string | null {
@@ -101,6 +119,82 @@ function getMailTlsOptions(host: string): TlsOptions {
     rejectUnauthorized: shouldRejectUnauthorized,
     servername: host
   };
+}
+
+function getImapClientOptions(session: Pick<MailSession, "email" | "password" | "imap">) {
+  return {
+    host: session.imap.host,
+    port: session.imap.port,
+    secure: session.imap.secure,
+    auth: {
+      user: session.email,
+      pass: session.password
+    },
+    tls: getMailTlsOptions(session.imap.host),
+    connectionTimeout: mailConnectionTimeoutMs,
+    greetingTimeout: mailGreetingTimeoutMs,
+    socketTimeout: mailSocketTimeoutMs
+  };
+}
+
+const transientDnsErrorCodes = new Set(["EAI_AGAIN", "EAI_NODATA", "EAI_NONAME"]);
+const connectionErrorCodes = new Set(["ETIMEDOUT", "ECONNREFUSED", "ECONNRESET", "ENETUNREACH", "EHOSTUNREACH"]);
+
+function isTransientDnsError(error: unknown, expectedHost: string): error is MailOperationError {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const mailError = error as MailOperationError;
+  return transientDnsErrorCodes.has(mailError.code ?? "") && (!mailError.hostname || mailError.hostname === expectedHost);
+}
+
+function isConnectionError(error: unknown): error is MailOperationError {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const mailError = error as MailOperationError;
+
+  if (connectionErrorCodes.has(mailError.code ?? "")) {
+    return true;
+  }
+
+  const msg = mailError.message.toLowerCase();
+  return msg.includes("timed out") || msg.includes("timeout") || msg.includes("established") || msg.includes("connection was");
+}
+
+function normalizeMailError(error: unknown, host: string): Error {
+  if (isTransientDnsError(error, host)) {
+    return new Error(`Temporary DNS lookup failure for ${host}. Please try again.`);
+  }
+
+  if (isConnectionError(error)) {
+    return new Error(`Could not connect to mail server (${host}). The server may be unreachable or the port may be blocked.`);
+  }
+
+  return error instanceof Error ? error : new Error("Unexpected mail server error.");
+}
+
+async function sleep(delayMs: number) {
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+async function withTransientDnsRetry<T>(host: string, action: () => Promise<T>): Promise<T> {
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await action();
+    } catch (error) {
+      if (!isTransientDnsError(error, host) || attempt >= transientDnsRetryCount) {
+        throw normalizeMailError(error, host);
+      }
+
+      attempt += 1;
+      await sleep(transientDnsRetryDelayMs * attempt);
+    }
+  }
 }
 
 function bodyStructureHasAttachments(node: unknown): boolean {
@@ -169,22 +263,15 @@ async function fetchFolderMessages(client: ImapFlow, folder: string, limit = 25)
 }
 
 export async function verifyMailAccess(session: Omit<MailSession, "token" | "createdAt">): Promise<void> {
-  const imapClient = new ImapFlow({
-    host: session.imap.host,
-    port: session.imap.port,
-    secure: session.imap.secure,
-    auth: {
-      user: session.email,
-      pass: session.password
-    },
-    tls: getMailTlsOptions(session.imap.host)
-  });
+  const imapVerify = withTransientDnsRetry(session.imap.host, async () => {
+    const imapClient = new ImapFlow(getImapClientOptions(session));
 
-  try {
-    await imapClient.connect();
-  } finally {
-    await imapClient.logout().catch(() => undefined);
-  }
+    try {
+      await imapClient.connect();
+    } finally {
+      await imapClient.logout().catch(() => undefined);
+    }
+  });
 
   const transport = nodemailer.createTransport({
     host: session.smtp.host,
@@ -194,30 +281,31 @@ export async function verifyMailAccess(session: Omit<MailSession, "token" | "cre
       user: session.email,
       pass: session.password
     },
-    tls: getMailTlsOptions(session.smtp.host)
+    tls: getMailTlsOptions(session.smtp.host),
+    connectionTimeout: mailConnectionTimeoutMs,
+    greetingTimeout: mailGreetingTimeoutMs,
+    socketTimeout: mailSocketTimeoutMs,
+    dnsTimeout: mailConnectionTimeoutMs
   });
 
-  await transport.verify();
+  const smtpVerify = withTransientDnsRetry(session.smtp.host, async () => {
+    await transport.verify();
+  });
+
+  await Promise.all([imapVerify, smtpVerify]);
 }
 
 async function withImapClient<T>(session: MailSession, action: (client: ImapFlow) => Promise<T>): Promise<T> {
-  const client = new ImapFlow({
-    host: session.imap.host,
-    port: session.imap.port,
-    secure: session.imap.secure,
-    auth: {
-      user: session.email,
-      pass: session.password
-    },
-    tls: getMailTlsOptions(session.imap.host)
-  });
+  return withTransientDnsRetry(session.imap.host, async () => {
+    const client = new ImapFlow(getImapClientOptions(session));
 
-  try {
-    await client.connect();
-    return await action(client);
-  } finally {
-    await client.logout().catch(() => undefined);
-  }
+    try {
+      await client.connect();
+      return await action(client);
+    } finally {
+      await client.logout().catch(() => undefined);
+    }
+  });
 }
 
 export function listFolders(session: MailSession): Promise<FolderInfo[]> {
@@ -254,7 +342,8 @@ export function listStarredMessages(session: MailSession, folders: FolderInfo[],
 
 export function getMessage(session: MailSession, folder: string, uid: number) {
   return withImapClient(session, async (client) => {
-    await client.mailboxOpen(folder);
+    // Open read-only so loading a message never flips unread state implicitly.
+    await client.mailboxOpen(folder, { readOnly: true });
 
     const message = await client.fetchOne(
       uid,
@@ -273,20 +362,12 @@ export function getMessage(session: MailSession, folder: string, uid: number) {
     }
 
     const parsed = await simpleParser(message.source);
-    const attachments: MessageAttachment[] = parsed.attachments.map((attachment, index) => {
-      const filename = attachment.filename ?? `attachment-${index + 1}`;
-      const contentBase64 = Buffer.isBuffer(attachment.content)
-        ? attachment.content.toString("base64")
-        : Buffer.from(String(attachment.content ?? ""), "utf8").toString("base64");
-
-      return {
-        id: `${message.uid}-${index}`,
-        filename,
-        contentType: attachment.contentType || "application/octet-stream",
-        size: attachment.size,
-        contentBase64
-      };
-    });
+    const attachments: MessageAttachment[] = parsed.attachments.map((attachment, index) => ({
+      id: `${message.uid}-${index}`,
+      filename: attachment.filename ?? `attachment-${index + 1}`,
+      contentType: attachment.contentType || "application/octet-stream",
+      size: attachment.size
+    }));
 
     return {
       uid: message.uid,
@@ -302,6 +383,41 @@ export function getMessage(session: MailSession, folder: string, uid: number) {
       html: typeof parsed.html === "string" ? parsed.html : null,
       unread: !message.flags?.has("\\Seen"),
       attachments
+    };
+  });
+}
+
+export function getMessageAttachmentContent(session: MailSession, folder: string, uid: number, attachmentId: string): Promise<MessageAttachmentContent> {
+  return withImapClient(session, async (client) => {
+    await client.mailboxOpen(folder, { readOnly: true });
+
+    const message = await client.fetchOne(
+      uid,
+      {
+        uid: true,
+        source: true
+      },
+      { uid: true }
+    );
+
+    if (!message || !message.source) {
+      throw new Error("Message not found.");
+    }
+
+    const parsed = await simpleParser(message.source);
+    const attachment = parsed.attachments.find((item, index) => `${message.uid}-${index}` === attachmentId);
+
+    if (!attachment) {
+      throw new Error("Attachment not found.");
+    }
+
+    return {
+      id: attachmentId,
+      filename: attachment.filename ?? attachmentId,
+      contentType: attachment.contentType || "application/octet-stream",
+      contentBase64: Buffer.isBuffer(attachment.content)
+        ? attachment.content.toString("base64")
+        : Buffer.from(String(attachment.content ?? ""), "utf8").toString("base64")
     };
   });
 }
