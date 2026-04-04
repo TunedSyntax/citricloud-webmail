@@ -19,7 +19,8 @@ spec:
         app: {{ include "citricloud-webmail.fullname" . }}
         {{- include "citricloud-webmail.labels" . | nindent 8 }}
     spec:
-      {{- with .Values.nodeSelector }}
+      {{- $webmailNodeSelector := .Values.webmail.nodeSelector | default .Values.nodeSelector }}
+      {{- with $webmailNodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
