@@ -207,6 +207,8 @@ jobs:
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
         run: |
           NAMESPACE="$DEFAULT_NAMESPACE"
+          MAIL_PRESETS_FILE="$(mktemp)"
+          printf '%s' "$MAIL_PRESETS_JSON" > "$MAIL_PRESETS_FILE"
 
           helm upgrade --install citricloud-webmail-dev deploy/helm/citricloud-webmail \
             --namespace "$NAMESPACE" \
@@ -223,7 +225,9 @@ jobs:
             --set-string app.apiUrl="$API_URL" \
             --set-string secrets.sessionEncryptionKey="$SESSION_ENCRYPTION_KEY" \
             --set-string secrets.redisPassword="$REDIS_PASSWORD" \
-            --set-string secrets.mailPresetsJson="$MAIL_PRESETS_JSON"
+            --set-file secrets.mailPresetsJson="$MAIL_PRESETS_FILE"
+
+          rm -f "$MAIL_PRESETS_FILE"
 
           kubectl -n "$NAMESPACE" rollout status deployment/citricloud-webmail --timeout=180s
 
@@ -323,6 +327,8 @@ jobs:
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
         run: |
           NAMESPACE="$DEFAULT_NAMESPACE"
+          MAIL_PRESETS_FILE="$(mktemp)"
+          printf '%s' "$MAIL_PRESETS_JSON" > "$MAIL_PRESETS_FILE"
 
           helm upgrade --install citricloud-webmail-staging deploy/helm/citricloud-webmail \
             --namespace "$NAMESPACE" \
@@ -339,7 +345,9 @@ jobs:
             --set-string app.apiUrl="$API_URL" \
             --set-string secrets.sessionEncryptionKey="$SESSION_ENCRYPTION_KEY" \
             --set-string secrets.redisPassword="$REDIS_PASSWORD" \
-            --set-string secrets.mailPresetsJson="$MAIL_PRESETS_JSON"
+            --set-file secrets.mailPresetsJson="$MAIL_PRESETS_FILE"
+
+          rm -f "$MAIL_PRESETS_FILE"
 
           kubectl -n "$NAMESPACE" rollout status deployment/citricloud-webmail --timeout=180s
 
@@ -439,6 +447,8 @@ jobs:
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
         run: |
           NAMESPACE="$DEFAULT_NAMESPACE"
+          MAIL_PRESETS_FILE="$(mktemp)"
+          printf '%s' "$MAIL_PRESETS_JSON" > "$MAIL_PRESETS_FILE"
 
           helm upgrade --install citricloud-webmail deploy/helm/citricloud-webmail \
             --namespace "$NAMESPACE" \
@@ -455,6 +465,8 @@ jobs:
             --set-string app.apiUrl="$API_URL" \
             --set-string secrets.sessionEncryptionKey="$SESSION_ENCRYPTION_KEY" \
             --set-string secrets.redisPassword="$REDIS_PASSWORD" \
-            --set-string secrets.mailPresetsJson="$MAIL_PRESETS_JSON"
+            --set-file secrets.mailPresetsJson="$MAIL_PRESETS_FILE"
+
+          rm -f "$MAIL_PRESETS_FILE"
 
           kubectl -n "$NAMESPACE" rollout status deployment/citricloud-webmail --timeout=180s
