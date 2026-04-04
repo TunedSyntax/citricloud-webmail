@@ -210,11 +210,11 @@ jobs:
           MAIL_PRESETS_FILE="$(mktemp)"
           printf '%s' "$MAIL_PRESETS_JSON" > "$MAIL_PRESETS_FILE"
 
-          helm upgrade --install citricloud-webmail-dev deploy/helm/citricloud-webmail \
+          if ! helm upgrade --install citricloud-webmail-dev deploy/helm/citricloud-webmail \
             --namespace "$NAMESPACE" \
             --create-namespace \
             --wait \
-            --timeout 5m \
+            --timeout 10m \
             --set image.repository="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
             --set image.tag="$IMAGE_TAG" \
             --set replicaCount=1 \
@@ -228,11 +228,17 @@ jobs:
             --set-string app.apiUrl="$API_URL" \
             --set-string secrets.sessionEncryptionKey="$SESSION_ENCRYPTION_KEY" \
             --set-string secrets.redisPassword="$REDIS_PASSWORD" \
-            --set-file secrets.mailPresetsJson="$MAIL_PRESETS_FILE"
+            --set-file secrets.mailPresetsJson="$MAIL_PRESETS_FILE"; then
+            kubectl -n "$NAMESPACE" get pods -o wide || true
+            kubectl -n "$NAMESPACE" describe deployment citricloud-webmail || true
+            kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp | tail -n 50 || true
+            rm -f "$MAIL_PRESETS_FILE"
+            exit 1
+          fi
 
           rm -f "$MAIL_PRESETS_FILE"
 
-          kubectl -n "$NAMESPACE" rollout status deployment/citricloud-webmail --timeout=180s
+          kubectl -n "$NAMESPACE" rollout status deployment/citricloud-webmail --timeout=600s
 
   deploy-staging:
     name: Deploy Staging
