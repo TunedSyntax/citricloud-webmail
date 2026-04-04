@@ -2,8 +2,11 @@ replicaCount: 2
 
 image:
   repository: ghcr.io/tunedsyntax/citricloud-webmail
-  tag: latest
+  tag: v0.0.1-beta.3
   pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: ghcr-pull-secret
 
 service:
   port: 80
@@ -20,6 +23,11 @@ nodeSelector: {}
 ingress:
   enabled: true
   className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: le
   host: webmail.citricloud.com
   tls:
     enabled: true
@@ -27,6 +35,11 @@ ingress:
 
 publicApi:
   enabled: false
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: le
   port: 8000
   host: api.citricloud.com
   tls:

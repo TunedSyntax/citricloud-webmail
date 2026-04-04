@@ -1,0 +1,410 @@
+name: Deploy Webmail
+
+on:
+  push:
+    branches:
+      - dev
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-webmail-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: tunedsyntax/citricloud-webmail
+
+jobs:
+  build-and-push:
+    name: Build and Push Image
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.value }}
+      image_ref: ${{ steps.image.outputs.value }}
+      is_prerelease: ${{ steps.tag.outputs.is_prerelease }}
+      is_stable: ${{ steps.tag.outputs.is_stable }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate repository guardrails
+        run: node scripts/repo-guard.mjs --mode=repo
+
+      - name: Validate version policy
+        if: github.ref_type == 'tag'
+        run: node scripts/version-policy.mjs
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+
+            if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              IS_PRERELEASE=false
+              IS_STABLE=true
+            else
+              IS_PRERELEASE=true
+              IS_STABLE=false
+            fi
+          else
+            TAG="dev-${GITHUB_SHA::7}"
+            IS_PRERELEASE=false
+            IS_STABLE=false
+          fi
+
+          if [ -z "$TAG" ]; then
+            echo "Tag could not be resolved." >&2
+            exit 1
+          fi
+
+          echo "value=$TAG" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "is_stable=$IS_STABLE" >> "$GITHUB_OUTPUT"
+
+      - name: Compose image reference
+        id: image
+        shell: bash
+        run: |
+          IMAGE_REF="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}"
+          echo "value=$IMAGE_REF" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate registry credentials
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.REGISTRY_USERNAME }}" ] || [ -z "${{ secrets.REGISTRY_TOKEN }}" ]; then
+            echo "REGISTRY_USERNAME and REGISTRY_TOKEN secrets are required for GHCR push." >&2
+            echo "Create a PAT with write:packages and add it as REGISTRY_TOKEN." >&2
+            exit 1
+          fi
+
+      - name: Login to container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.value }}
+
+  deploy-development:
+    name: Deploy Development
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/dev'
+    environment:
+      name: dev
+      url: https://dev.webmail.citricloud.com
+    needs: build-and-push
+    env:
+      WEB_HOST: dev.webmail.citricloud.com
+      API_HOST: api-dev.webmail.citricloud.com
+      TLS_SECRET: citricloud-webmail-dev-tls
+      API_TLS_SECRET: citricloud-webmail-api-dev-tls
+      DEFAULT_NAMESPACE: citricloud-webmail-dev
+      API_URL: ${{ secrets.API_URL }}
+      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+      SESSION_ENCRYPTION_KEY: ${{ secrets.SESSION_ENCRYPTION_KEY }}
+      REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure kubeconfig
+        shell: bash
+        run: |
+          if [ -z "$KUBE_CONFIG_DATA" ]; then
+            echo "KUBE_CONFIG_DATA is required for Development environment." >&2
+            exit 1
+          fi
+
+          mkdir -p "$HOME/.kube"
+          if echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config" 2>/dev/null; then
+            echo "Decoded base64 kubeconfig."
+          else
+            echo "$KUBE_CONFIG_DATA" > "$HOME/.kube/config"
+            echo "Using raw kubeconfig content."
+          fi
+
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Validate environment secrets
+        shell: bash
+        run: |
+          if [ -z "$API_URL" ]; then
+            echo "API_URL must be set in the Development environment secrets." >&2
+            exit 1
+          fi
+
+          if [ -z "$SESSION_ENCRYPTION_KEY" ] || [ -z "$REDIS_PASSWORD" ]; then
+            echo "SESSION_ENCRYPTION_KEY and REDIS_PASSWORD must be set in Development secrets." >&2
+            exit 1
+          fi
+
+      - name: Ensure GHCR pull secret
+        shell: bash
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          NAMESPACE="$DEFAULT_NAMESPACE"
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret docker-registry ghcr-pull-secret \
+            --namespace "$NAMESPACE" \
+            --docker-server="${{ env.REGISTRY }}" \
+            --docker-username="$REGISTRY_USERNAME" \
+            --docker-password="$REGISTRY_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy with Helm
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+        run: |
+          NAMESPACE="$DEFAULT_NAMESPACE"
+
+          helm upgrade --install citricloud-webmail-dev deploy/helm/citricloud-webmail \
+            --namespace "$NAMESPACE" \
+            --create-namespace \
+            --wait \
+            --timeout 5m \
+            --set image.repository="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
+            --set image.tag="$IMAGE_TAG" \
+            --set ingress.host="$WEB_HOST" \
+            --set ingress.tls.secretName="$TLS_SECRET" \
+            --set publicApi.enabled=true \
+            --set publicApi.host="$API_HOST" \
+            --set publicApi.tls.secretName="$API_TLS_SECRET" \
+            --set-string app.apiUrl="$API_URL" \
+            --set-string secrets.sessionEncryptionKey="$SESSION_ENCRYPTION_KEY" \
+            --set-string secrets.redisPassword="$REDIS_PASSWORD"
+
+          kubectl -n "$NAMESPACE" rollout status deployment/citricloud-webmail --timeout=180s
+
+  deploy-staging:
+    name: Deploy Staging
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') && needs.build-and-push.outputs.is_prerelease == 'true'
+    environment:
+      name: staging
+      url: https://staging.webmail.citricloud.com
+    needs: build-and-push
+    env:
+      WEB_HOST: staging.webmail.citricloud.com
+      API_HOST: api-staging.webmail.citricloud.com
+      TLS_SECRET: citricloud-webmail-staging-tls
+      API_TLS_SECRET: citricloud-webmail-api-staging-tls
+      DEFAULT_NAMESPACE: citricloud-webmail-staging
+      API_URL: ${{ secrets.API_URL }}
+      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+      SESSION_ENCRYPTION_KEY: ${{ secrets.SESSION_ENCRYPTION_KEY }}
+      REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure kubeconfig
+        shell: bash
+        run: |
+          if [ -z "$KUBE_CONFIG_DATA" ]; then
+            echo "KUBE_CONFIG_DATA is required for Staging environment." >&2
+            exit 1
+          fi
+
+          mkdir -p "$HOME/.kube"
+          if echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config" 2>/dev/null; then
+            echo "Decoded base64 kubeconfig."
+          else
+            echo "$KUBE_CONFIG_DATA" > "$HOME/.kube/config"
+            echo "Using raw kubeconfig content."
+          fi
+
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Validate environment secrets
+        shell: bash
+        run: |
+          if [ -z "$API_URL" ]; then
+            echo "API_URL must be set in the Staging environment secrets." >&2
+            exit 1
+          fi
+
+          if [ -z "$SESSION_ENCRYPTION_KEY" ] || [ -z "$REDIS_PASSWORD" ]; then
+            echo "SESSION_ENCRYPTION_KEY and REDIS_PASSWORD must be set in Staging secrets." >&2
+            exit 1
+          fi
+
+      - name: Ensure GHCR pull secret
+        shell: bash
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          NAMESPACE="$DEFAULT_NAMESPACE"
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret docker-registry ghcr-pull-secret \
+            --namespace "$NAMESPACE" \
+            --docker-server="${{ env.REGISTRY }}" \
+            --docker-username="$REGISTRY_USERNAME" \
+            --docker-password="$REGISTRY_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy with Helm
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+        run: |
+          NAMESPACE="$DEFAULT_NAMESPACE"
+
+          helm upgrade --install citricloud-webmail-staging deploy/helm/citricloud-webmail \
+            --namespace "$NAMESPACE" \
+            --create-namespace \
+            --wait \
+            --timeout 5m \
+            --set image.repository="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
+            --set image.tag="$IMAGE_TAG" \
+            --set ingress.host="$WEB_HOST" \
+            --set ingress.tls.secretName="$TLS_SECRET" \
+            --set publicApi.enabled=true \
+            --set publicApi.host="$API_HOST" \
+            --set publicApi.tls.secretName="$API_TLS_SECRET" \
+            --set-string app.apiUrl="$API_URL" \
+            --set-string secrets.sessionEncryptionKey="$SESSION_ENCRYPTION_KEY" \
+            --set-string secrets.redisPassword="$REDIS_PASSWORD"
+
+          kubectl -n "$NAMESPACE" rollout status deployment/citricloud-webmail --timeout=180s
+
+  deploy-production:
+    name: Deploy Production
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') && needs.build-and-push.outputs.is_stable == 'true'
+    environment:
+      name: prod
+      url: https://webmail.citricloud.com
+    needs: build-and-push
+    env:
+      WEB_HOST: webmail.citricloud.com
+      API_HOST: api.webmail.citricloud.com
+      TLS_SECRET: citricloud-webmail-tls
+      API_TLS_SECRET: citricloud-webmail-api-tls
+      DEFAULT_NAMESPACE: citricloud-webmail
+      API_URL: ${{ secrets.API_URL }}
+      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+      SESSION_ENCRYPTION_KEY: ${{ secrets.SESSION_ENCRYPTION_KEY }}
+      REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure kubeconfig
+        shell: bash
+        run: |
+          if [ -z "$KUBE_CONFIG_DATA" ]; then
+            echo "KUBE_CONFIG_DATA is required for Production environment." >&2
+            exit 1
+          fi
+
+          mkdir -p "$HOME/.kube"
+          if echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config" 2>/dev/null; then
+            echo "Decoded base64 kubeconfig."
+          else
+            echo "$KUBE_CONFIG_DATA" > "$HOME/.kube/config"
+            echo "Using raw kubeconfig content."
+          fi
+
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Validate environment secrets
+        shell: bash
+        run: |
+          if [ -z "$API_URL" ]; then
+            echo "API_URL must be set in the Production environment secrets." >&2
+            exit 1
+          fi
+
+          if [ -z "$SESSION_ENCRYPTION_KEY" ] || [ -z "$REDIS_PASSWORD" ]; then
+            echo "SESSION_ENCRYPTION_KEY and REDIS_PASSWORD must be set in Production secrets." >&2
+            exit 1
+          fi
+
+      - name: Ensure GHCR pull secret
+        shell: bash
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          NAMESPACE="$DEFAULT_NAMESPACE"
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret docker-registry ghcr-pull-secret \
+            --namespace "$NAMESPACE" \
+            --docker-server="${{ env.REGISTRY }}" \
+            --docker-username="$REGISTRY_USERNAME" \
+            --docker-password="$REGISTRY_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy with Helm
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+        run: |
+          NAMESPACE="$DEFAULT_NAMESPACE"
+
+          helm upgrade --install citricloud-webmail deploy/helm/citricloud-webmail \
+            --namespace "$NAMESPACE" \
+            --create-namespace \
+            --wait \
+            --timeout 5m \
+            --set image.repository="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
+            --set image.tag="$IMAGE_TAG" \
+            --set ingress.host="$WEB_HOST" \
+            --set ingress.tls.secretName="$TLS_SECRET" \
+            --set publicApi.enabled=true \
+            --set publicApi.host="$API_HOST" \
+            --set publicApi.tls.secretName="$API_TLS_SECRET" \
+            --set-string app.apiUrl="$API_URL" \
+            --set-string secrets.sessionEncryptionKey="$SESSION_ENCRYPTION_KEY" \
+            --set-string secrets.redisPassword="$REDIS_PASSWORD"
+
+          kubectl -n "$NAMESPACE" rollout status deployment/citricloud-webmail --timeout=180s

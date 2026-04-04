@@ -2,17 +2,15 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
 
 permissions:
   contents: write
-  issues: write
-  pull-requests: write
 
 jobs:
   release:
-    name: Semantic Release
+    name: Publish GitHub Release
     runs-on: ubuntu-latest
 
     steps:
@@ -21,15 +19,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
+          node-version: 20
 
-      - name: Install semantic-release
-        run: npm install --no-save semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/github
+      - name: Validate repository guardrails
+        run: node scripts/repo-guard.mjs --mode=repo
 
-      - name: Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release
+      - name: Validate version policy
+        id: version
+        run: node scripts/version-policy.mjs
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.version.outputs.release_name }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
+          generate_release_notes: true

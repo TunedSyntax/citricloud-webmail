@@ -7,17 +7,31 @@ metadata:
     app.kubernetes.io/name: citricloud-webmail
     app.kubernetes.io/part-of: citricloud-webmail
   annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
     # Routes webmail.citricloud.com exclusively to this namespace.
     # NEVER share this ingress with the citricloud (local) project.
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: le
 spec:
   ingressClassName: traefik
   tls:
     - hosts:
         - webmail.citricloud.com
+        - api.webmail.citricloud.com
       secretName: citricloud-webmail-tls
   rules:
     - host: webmail.citricloud.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: citricloud-webmail
+                port:
+                  number: 80
+    - host: api.webmail.citricloud.com
       http:
         paths:
           - path: /

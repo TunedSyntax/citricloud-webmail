@@ -40,6 +40,8 @@ spec:
               value: redis
             - name: SESSION_TTL_SECONDS
               value: {{ .Values.session.ttlSeconds | quote }}
+            - name: API_URL
+              value: {{ .Values.app.apiUrl | quote }}
             - name: REDIS_URL
               valueFrom:
                 secretKeyRef:
