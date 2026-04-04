@@ -1,8 +1,2 @@
 nodeSelector:
   kubernetes.io/hostname: k3s-prod-01
-
-deploymentStrategy:
-  type: RollingUpdate
-  rollingUpdate:
-    maxUnavailable: 0
-    maxSurge: 1
