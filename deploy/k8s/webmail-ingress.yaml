@@ -17,11 +17,11 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - webmail.citricloud.com
-        - api.webmail.citricloud.com
+        - <webmail-hostname>
+        - <api-webmail-hostname>
       secretName: citricloud-webmail-tls
   rules:
-    - host: webmail.citricloud.com
+    - host: <webmail-hostname>
       http:
         paths:
           - path: /
@@ -31,7 +31,7 @@ spec:
                 name: citricloud-webmail
                 port:
                   number: 80
-    - host: api.webmail.citricloud.com
+    - host: <api-webmail-hostname>
       http:
         paths:
           - path: /

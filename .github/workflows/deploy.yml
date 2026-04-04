@@ -129,6 +129,7 @@ jobs:
       KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
       SESSION_ENCRYPTION_KEY: ${{ secrets.SESSION_ENCRYPTION_KEY }}
       REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+      MAIL_PRESETS_JSON: ${{ secrets.MAIL_PRESETS_JSON }}
 
     steps:
       - name: Checkout
@@ -180,6 +181,11 @@ jobs:
             exit 1
           fi
 
+          if [ -z "$MAIL_PRESETS_JSON" ]; then
+            echo "MAIL_PRESETS_JSON must be set in Development secrets." >&2
+            exit 1
+          fi
+
       - name: Ensure GHCR pull secret
         shell: bash
         env:
@@ -216,7 +222,8 @@ jobs:
             --set publicApi.tls.secretName="$API_TLS_SECRET" \
             --set-string app.apiUrl="$API_URL" \
             --set-string secrets.sessionEncryptionKey="$SESSION_ENCRYPTION_KEY" \
-            --set-string secrets.redisPassword="$REDIS_PASSWORD"
+            --set-string secrets.redisPassword="$REDIS_PASSWORD" \
+            --set-string secrets.mailPresetsJson="$MAIL_PRESETS_JSON"
 
           kubectl -n "$NAMESPACE" rollout status deployment/citricloud-webmail --timeout=180s
 
@@ -238,6 +245,7 @@ jobs:
       KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
       SESSION_ENCRYPTION_KEY: ${{ secrets.SESSION_ENCRYPTION_KEY }}
       REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+      MAIL_PRESETS_JSON: ${{ secrets.MAIL_PRESETS_JSON }}
 
     steps:
       - name: Checkout
@@ -289,6 +297,11 @@ jobs:
             exit 1
           fi
 
+          if [ -z "$MAIL_PRESETS_JSON" ]; then
+            echo "MAIL_PRESETS_JSON must be set in Staging secrets." >&2
+            exit 1
+          fi
+
       - name: Ensure GHCR pull secret
         shell: bash
         env:
@@ -325,7 +338,8 @@ jobs:
             --set publicApi.tls.secretName="$API_TLS_SECRET" \
             --set-string app.apiUrl="$API_URL" \
             --set-string secrets.sessionEncryptionKey="$SESSION_ENCRYPTION_KEY" \
-            --set-string secrets.redisPassword="$REDIS_PASSWORD"
+            --set-string secrets.redisPassword="$REDIS_PASSWORD" \
+            --set-string secrets.mailPresetsJson="$MAIL_PRESETS_JSON"
 
           kubectl -n "$NAMESPACE" rollout status deployment/citricloud-webmail --timeout=180s
 
@@ -347,6 +361,7 @@ jobs:
       KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
       SESSION_ENCRYPTION_KEY: ${{ secrets.SESSION_ENCRYPTION_KEY }}
       REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+      MAIL_PRESETS_JSON: ${{ secrets.MAIL_PRESETS_JSON }}
 
     steps:
       - name: Checkout
@@ -398,6 +413,11 @@ jobs:
             exit 1
           fi
 
+          if [ -z "$MAIL_PRESETS_JSON" ]; then
+            echo "MAIL_PRESETS_JSON must be set in Production secrets." >&2
+            exit 1
+          fi
+
       - name: Ensure GHCR pull secret
         shell: bash
         env:
@@ -434,6 +454,7 @@ jobs:
             --set publicApi.tls.secretName="$API_TLS_SECRET" \
             --set-string app.apiUrl="$API_URL" \
             --set-string secrets.sessionEncryptionKey="$SESSION_ENCRYPTION_KEY" \
-            --set-string secrets.redisPassword="$REDIS_PASSWORD"
+            --set-string secrets.redisPassword="$REDIS_PASSWORD" \
+            --set-string secrets.mailPresetsJson="$MAIL_PRESETS_JSON"
 
           kubectl -n "$NAMESPACE" rollout status deployment/citricloud-webmail --timeout=180s

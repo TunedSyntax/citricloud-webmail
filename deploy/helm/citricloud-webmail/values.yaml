@@ -28,7 +28,7 @@ ingress:
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/router.tls.certresolver: le
-  host: webmail.citricloud.com
+  host: ""
   tls:
     enabled: true
     secretName: citricloud-webmail-tls
@@ -41,7 +41,7 @@ publicApi:
     traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/router.tls.certresolver: le
   port: 8000
-  host: api.citricloud.com
+  host: ""
   tls:
     enabled: true
     secretName: citricloud-api-tls
@@ -68,6 +68,10 @@ redis:
 session:
   ttlSeconds: 86400
 
+app:
+  apiUrl: ""
+
 secrets:
   sessionEncryptionKey: ""
   redisPassword: ""
+  mailPresetsJson: ""

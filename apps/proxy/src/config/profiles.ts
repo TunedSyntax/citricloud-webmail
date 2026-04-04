@@ -17,40 +17,22 @@ export type MailConnectionPreset = {
   };
 };
 
-export const mailPresets: MailConnectionPreset[] = [
-  {
-    key: "EXTERNAL",
-    label: "CitriCloud External",
-    environment: "K3S-Prod",
-    domainSuffix: "citricloud.com",
-    imap: {
-      host: "mail.citricloud.com",
-      port: 993,
-      secure: true
-    },
-    smtp: {
-      host: "mail.citricloud.com",
-      port: 587,
-      secure: false
-    }
-  },
-  {
-    key: "INTERNAL",
-    label: "CitriCloud Internal",
-    environment: "K3S-Mgmt",
-    domainSuffix: "subdomain.citricloud.com",
-    imap: {
-      host: "ems.citricloud.com",
-      port: 993,
-      secure: true
-    },
-    smtp: {
-      host: "ems.citricloud.com",
-      port: 587,
-      secure: false
-    }
+function loadMailPresets(): MailConnectionPreset[] {
+  const raw = process.env.MAIL_PRESETS_JSON;
+  if (!raw) {
+    throw new Error(
+      "MAIL_PRESETS_JSON environment variable is required. " +
+        "Set it to a JSON array of MailConnectionPreset objects in your .env file."
+    );
   }
-];
+  try {
+    return JSON.parse(raw) as MailConnectionPreset[];
+  } catch {
+    throw new Error("MAIL_PRESETS_JSON contains invalid JSON.");
+  }
+}
+
+export const mailPresets: MailConnectionPreset[] = loadMailPresets();
 
 export function detectPresetByEmail(email: string): MailConnectionPreset {
   const domain = email.split("@").at(1)?.toLowerCase() ?? "";
