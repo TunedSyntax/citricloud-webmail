@@ -1,3 +1,19 @@
 #!/bin/sh
 
 node scripts/repo-guard.mjs --mode=staged
+
+# Secret scan on staged changes using Gitleaks (https://github.com/gitleaks/gitleaks)
+if command -v gitleaks > /dev/null 2>&1; then
+  gitleaks protect --staged --config .gitleaks.toml --redact
+  STATUS=$?
+  if [ $STATUS -ne 0 ]; then
+    echo ""
+    echo "  Secret scan FAILED. Commit blocked."
+    echo "  Remove any real credentials, stage the fixed files, then commit again."
+    echo ""
+    exit 1
+  fi
+else
+  echo "[warn] gitleaks not found — secret scan skipped."
+  echo "       Install from https://github.com/gitleaks/gitleaks/releases"
+fi

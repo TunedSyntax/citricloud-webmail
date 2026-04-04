@@ -10,10 +10,10 @@ Professional webmail client for CitriCloud with a React dashboard and a Node.js 
 
 ## CitriCloud server presets
 
-- `EXTERNAL` (`K3S-Prod`): `mail.citricloud.com`, domain `@citricloud.com`
-- `INTERNAL` (`K3S-Mgmt`): `ems.citricloud.com`, domain `@subdomain.citricloud.com`
+- `EXTERNAL` (`K3S-Prod`): `mail.citricloud.com`, domain suffix `<external-mail-domain>`
+- `INTERNAL` (`K3S-Mgmt`): `ems.citricloud.com`, domain suffix `<internal-mail-domain>`
 
-The setup wizard automatically recommends the correct profile from the supplied email address and lets operators override the connection settings when needed.
+The setup wizard automatically recommends the correct profile from the supplied mailbox address and lets operators override the connection settings when needed.
 
 ## Development
 

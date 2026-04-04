@@ -1,0 +1,33 @@
+title = "citricloud-webmail gitleaks config"
+
+[extend]
+# Use the upstream default rule set as the base
+useDefault = true
+
+# ---------------------------------------------------------------------------
+# Allowlisted paths
+# These files contain placeholder values or encrypted blobs — not real secrets
+# ---------------------------------------------------------------------------
+[allowlist]
+description = "Project-specific false-positive allowlist"
+
+paths = [
+  # Placeholder environment template — values are examples only
+  '''.env\.example''',
+  # Kubernetes secret template uses replace-with-* markers, not real values
+  '''deploy/k8s/secrets-template\.yaml''',
+  # Encrypted session store — binary/encrypted blob, not raw credentials
+  '''apps/proxy/data/sessions\.enc\.json''',
+  # Lock file — contains npm registry URLs that can trigger URL-secret rules
+  '''package-lock\.json''',
+]
+
+# Regex allowlist for common placeholder strings that look like secrets
+regexes = [
+  # Explicit placeholder markers used throughout the project
+  '''replace-with-[a-z0-9-]+''',
+  # Helm/kubectl --set examples in README (dots and ellipsis)
+  '''--set(-string)?\s+secrets\.\w+=\.\.\. ''',
+  # Generic base-N encoded noise from encrypted session blobs
+  '''^[A-Za-z0-9+/]{40,}={0,2}$''',
+]
