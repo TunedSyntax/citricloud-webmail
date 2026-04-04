@@ -217,6 +217,9 @@ jobs:
             --timeout 5m \
             --set image.repository="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" \
             --set image.tag="$IMAGE_TAG" \
+            --set replicaCount=1 \
+            --set deploymentStrategy.rollingUpdate.maxUnavailable=1 \
+            --set deploymentStrategy.rollingUpdate.maxSurge=0 \
             --set ingress.host="$WEB_HOST" \
             --set ingress.tls.secretName="$TLS_SECRET" \
             --set publicApi.enabled=true \
