@@ -12,8 +12,13 @@ service:
   port: 80
   targetPort: 8080
 
-app:
-  apiUrl: ""
+deploymentStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+
+nodeSelector: {}
 
 ingress:
   enabled: true

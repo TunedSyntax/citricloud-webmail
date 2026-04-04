@@ -19,10 +19,12 @@ spec:
       containers:
         - name: redis
           image: {{ .Values.redis.image }}
-          command:
-            - sh
-            - -c
-            - exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"
+          args:
+            - redis-server
+            - --appendonly
+            - "yes"
+            - --requirepass
+            - $(REDIS_PASSWORD)
           env:
             - name: REDIS_PASSWORD
               valueFrom:

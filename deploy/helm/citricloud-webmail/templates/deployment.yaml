@@ -6,6 +6,10 @@ metadata:
     {{- include "citricloud-webmail.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  {{- with .Values.deploymentStrategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   selector:
     matchLabels:
       app: {{ include "citricloud-webmail.fullname" . }}
@@ -15,8 +19,9 @@ spec:
         app: {{ include "citricloud-webmail.fullname" . }}
         {{- include "citricloud-webmail.labels" . | nindent 8 }}
     spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
+      {{- $webmailNodeSelector := .Values.webmail.nodeSelector | default .Values.nodeSelector }}
+      {{- with $webmailNodeSelector }}
+      nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
