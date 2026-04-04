@@ -71,6 +71,15 @@ web_modules/
 !.env.example
 deploy/k8s/secrets.local.yaml
 
+# Sensitive local credential material
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+id_rsa
+id_ed25519
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
