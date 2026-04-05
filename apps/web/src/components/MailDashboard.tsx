@@ -100,7 +100,11 @@ type DashboardSettings = {
   displayName: string;
   soundEnabled: boolean;
   syncLabelsEnabled: boolean;
+  autoOpenFirstMessage: boolean;
+  messagePageSize: 25 | 50 | 100;
 };
+
+type SettingsTab = "general" | "notifications" | "labels" | "layout" | "behavior";
 
 const sidebarItems = [
   { label: "Inbox", icon: Inbox, fallback: "INBOX" },
@@ -338,7 +342,9 @@ function readDashboardSettings(storageKey: string, email: string): DashboardSett
   const fallback: DashboardSettings = {
     displayName: buildDefaultDisplayName(email),
     soundEnabled: true,
-    syncLabelsEnabled: true
+    syncLabelsEnabled: true,
+    autoOpenFirstMessage: true,
+    messagePageSize: 25
   };
 
   if (typeof window === "undefined") {
@@ -352,10 +358,14 @@ function readDashboardSettings(storageKey: string, email: string): DashboardSett
 
   try {
     const parsed = JSON.parse(raw) as Partial<DashboardSettings>;
+    const parsedPageSize = parsed.messagePageSize;
+    const messagePageSize = parsedPageSize === 50 || parsedPageSize === 100 ? parsedPageSize : 25;
     return {
       displayName: typeof parsed.displayName === "string" && parsed.displayName.trim() ? parsed.displayName : fallback.displayName,
       soundEnabled: parsed.soundEnabled ?? fallback.soundEnabled,
-      syncLabelsEnabled: parsed.syncLabelsEnabled ?? fallback.syncLabelsEnabled
+      syncLabelsEnabled: parsed.syncLabelsEnabled ?? fallback.syncLabelsEnabled,
+      autoOpenFirstMessage: parsed.autoOpenFirstMessage ?? fallback.autoOpenFirstMessage,
+      messagePageSize
     };
   } catch {
     return fallback;
@@ -398,6 +408,7 @@ export function MailDashboard({
   const [composerDraft, setComposerDraft] = useState<ComposeDraft | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const dashboardSettingsStorageKey = `${dashboardSettingsStorageKeyPrefix}.${session.email.toLowerCase()}`;
   const [settings, setSettings] = useState<DashboardSettings>(() => readDashboardSettings(dashboardSettingsStorageKey, session.email));
   const [isSyncingLabels, setIsSyncingLabels] = useState(false);
@@ -418,6 +429,10 @@ export function MailDashboard({
   const userLabelsStorageKey = `${userLabelsStorageKeyPrefix}.${session.email.toLowerCase()}`;
   const messageLabelAssignmentsStorageKey = `${messageLabelAssignmentsStorageKeyPrefix}.${session.email.toLowerCase()}`;
   const displayName = settings.displayName.trim() || buildDefaultDisplayName(session.email);
+
+  useEffect(() => {
+    setMessageLimit(settings.messagePageSize);
+  }, [settings.messagePageSize]);
 
   const foldersQuery = useQuery({
     queryKey: ["folders", session.token],
@@ -655,7 +670,7 @@ export function MailDashboard({
   });
 
   useEffect(() => {
-    if (readingPane === "list") {
+    if (readingPane === "list" || !settings.autoOpenFirstMessage) {
       return;
     }
 
@@ -664,7 +679,7 @@ export function MailDashboard({
       setSelectedUid(firstMessage.uid);
       setSelectedMessageSourceFolder(firstMessage.folder);
     }
-  }, [messagesQuery.data, readingPane, selectedUid]);
+  }, [messagesQuery.data, readingPane, selectedUid, settings.autoOpenFirstMessage]);
 
   useEffect(() => {
     if (!selectedPreview) {
@@ -711,9 +726,9 @@ export function MailDashboard({
     setDragMoveMode(false);
     setSelectionMode(false);
     setSelectMenuOpen(false);
-    setMessageLimit(25);
+    setMessageLimit(settings.messagePageSize);
     setIsLoadingMore(false);
-  }, [activeFolder]);
+  }, [activeFolder, settings.messagePageSize]);
 
   useEffect(() => {
     setSettings(readDashboardSettings(dashboardSettingsStorageKey, session.email));
@@ -1710,6 +1725,7 @@ export function MailDashboard({
             type="button"
             onClick={() => {
               setAccountMenuOpen(false);
+              setSettingsTab("general");
               setSettingsOpen(true);
             }}
           >
@@ -2541,98 +2557,258 @@ export function MailDashboard({
                 </button>
               </div>
 
+              <div className="mt-5 flex flex-wrap gap-2 border-b border-surface-200 pb-4">
+                {[
+                  ["general", "General"],
+                  ["notifications", "Notifications"],
+                  ["labels", "Labels Sync"],
+                  ["layout", "Layout"],
+                  ["behavior", "Behavior"]
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                      settingsTab === key ? "bg-brand-100 text-brand-700" : "bg-surface-100 text-surface-600 hover:bg-surface-200"
+                    }`}
+                    type="button"
+                    onClick={() => setSettingsTab(key as SettingsTab)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               <div className="mt-6 space-y-6">
-                <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-surface-500">Profile</p>
-                  <label className="mt-3 block">
-                    <span className="mb-2 block text-sm font-medium text-surface-700">Display name</span>
-                    <input
-                      className="w-full rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm text-surface-900 outline-none transition focus:border-brand-300"
-                      value={settings.displayName}
-                      onChange={(event) =>
-                        setSettings((current) => ({
-                          ...current,
-                          displayName: event.target.value
-                        }))
-                      }
-                      placeholder={buildDefaultDisplayName(session.email)}
-                    />
-                  </label>
-                  <p className="mt-2 text-xs text-surface-500">Email identity remains {session.email}.</p>
-                </section>
+                {settingsTab === "general" ? (
+                  <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-surface-500">Profile</p>
+                    <label className="mt-3 block">
+                      <span className="mb-2 block text-sm font-medium text-surface-700">Display name</span>
+                      <input
+                        className="w-full rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm text-surface-900 outline-none transition focus:border-brand-300"
+                        value={settings.displayName}
+                        onChange={(event) =>
+                          setSettings((current) => ({
+                            ...current,
+                            displayName: event.target.value
+                          }))
+                        }
+                        placeholder={buildDefaultDisplayName(session.email)}
+                      />
+                    </label>
+                    <p className="mt-2 text-xs text-surface-500">Email identity remains {session.email}.</p>
+                  </section>
+                ) : null}
 
-                <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-surface-800">Sound notifications</p>
-                      <p className="text-xs text-surface-500">Play a tone when a new message arrives at the top of the active folder.</p>
+                {settingsTab === "notifications" ? (
+                  <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-surface-800">Sound notifications</p>
+                        <p className="text-xs text-surface-500">Play a tone when a new message arrives at the top of the active folder.</p>
+                      </div>
+                      <button
+                        className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.soundEnabled ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
+                        type="button"
+                        onClick={() =>
+                          setSettings((current) => ({
+                            ...current,
+                            soundEnabled: !current.soundEnabled
+                          }))
+                        }
+                      >
+                        {settings.soundEnabled ? "On" : "Off"}
+                      </button>
                     </div>
-                    <button
-                      className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.soundEnabled ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
-                      type="button"
-                      onClick={() =>
-                        setSettings((current) => ({
-                          ...current,
-                          soundEnabled: !current.soundEnabled
-                        }))
-                      }
-                    >
-                      {settings.soundEnabled ? "On" : "Off"}
-                    </button>
-                  </div>
-                </section>
+                    <div className="mt-3">
+                      <button
+                        className="rounded-xl border border-brand-200 bg-white px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+                        type="button"
+                        onClick={playNotificationTone}
+                      >
+                        Test sound
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
 
-                <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-surface-800">Synchronized labels</p>
-                      <p className="text-xs text-surface-500">Keep webmail labels and custom IMAP folders in sync in both directions.</p>
+                {settingsTab === "labels" ? (
+                  <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-surface-800">Synchronized labels</p>
+                        <p className="text-xs text-surface-500">Keep webmail labels and custom IMAP folders in sync in both directions.</p>
+                      </div>
+                      <button
+                        className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.syncLabelsEnabled ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
+                        type="button"
+                        onClick={() =>
+                          setSettings((current) => ({
+                            ...current,
+                            syncLabelsEnabled: !current.syncLabelsEnabled
+                          }))
+                        }
+                      >
+                        {settings.syncLabelsEnabled ? "Enabled" : "Disabled"}
+                      </button>
                     </div>
-                    <button
-                      className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.syncLabelsEnabled ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
-                      type="button"
-                      onClick={() =>
-                        setSettings((current) => ({
-                          ...current,
-                          syncLabelsEnabled: !current.syncLabelsEnabled
-                        }))
-                      }
-                    >
-                      {settings.syncLabelsEnabled ? "Enabled" : "Disabled"}
-                    </button>
-                  </div>
 
-                  <div className="mt-3 grid gap-2 text-xs text-surface-600 sm:grid-cols-3">
-                    <div className="rounded-xl border border-surface-200 bg-white px-3 py-2">
-                      <p className="font-semibold text-surface-700">Labels</p>
-                      <p>{userLabels.length}</p>
+                    <div className="mt-3 grid gap-2 text-xs text-surface-600 sm:grid-cols-3">
+                      <div className="rounded-xl border border-surface-200 bg-white px-3 py-2">
+                        <p className="font-semibold text-surface-700">Labels</p>
+                        <p>{userLabels.length}</p>
+                      </div>
+                      <div className="rounded-xl border border-surface-200 bg-white px-3 py-2">
+                        <p className="font-semibold text-surface-700">Custom IMAP folders</p>
+                        <p>{customImapFolders.length}</p>
+                      </div>
+                      <div className="rounded-xl border border-surface-200 bg-white px-3 py-2">
+                        <p className="font-semibold text-surface-700">Out of sync</p>
+                        <p>{labelsMissingFolderCount + foldersMissingLabelCount}</p>
+                      </div>
                     </div>
-                    <div className="rounded-xl border border-surface-200 bg-white px-3 py-2">
-                      <p className="font-semibold text-surface-700">Custom IMAP folders</p>
-                      <p>{customImapFolders.length}</p>
-                    </div>
-                    <div className="rounded-xl border border-surface-200 bg-white px-3 py-2">
-                      <p className="font-semibold text-surface-700">Out of sync</p>
-                      <p>{labelsMissingFolderCount + foldersMissingLabelCount}</p>
-                    </div>
-                  </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <p className="text-xs text-surface-500">
-                      Missing folders for labels: {labelsMissingFolderCount} · Missing labels for folders: {foldersMissingLabelCount}
-                    </p>
-                    <button
-                      className="rounded-xl border border-brand-200 bg-white px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      type="button"
-                      disabled={isSyncingLabels}
-                      onClick={() => {
-                        void syncLabelsWithImapFolders();
-                      }}
-                    >
-                      {isSyncingLabels ? "Synchronizing..." : "Sync now"}
-                    </button>
-                  </div>
-                </section>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <p className="text-xs text-surface-500">
+                        Missing folders for labels: {labelsMissingFolderCount} · Missing labels for folders: {foldersMissingLabelCount}
+                      </p>
+                      <button
+                        className="rounded-xl border border-brand-200 bg-white px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        type="button"
+                        disabled={isSyncingLabels}
+                        onClick={() => {
+                          void syncLabelsWithImapFolders();
+                        }}
+                      >
+                        {isSyncingLabels ? "Synchronizing..." : "Sync now"}
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
+
+                {settingsTab === "layout" ? (
+                  <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+                    <p className="text-sm font-semibold text-surface-800">Reading pane</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        className={`rounded-xl px-3 py-2 text-xs font-semibold ${readingPane === "right" ? "bg-brand-100 text-brand-700" : "bg-white text-surface-600 border border-surface-200"}`}
+                        type="button"
+                        onClick={() => setReadingPane("right")}
+                      >
+                        Right
+                      </button>
+                      <button
+                        className={`rounded-xl px-3 py-2 text-xs font-semibold ${readingPane === "bottom" ? "bg-brand-100 text-brand-700" : "bg-white text-surface-600 border border-surface-200"}`}
+                        type="button"
+                        onClick={() => setReadingPane("bottom")}
+                      >
+                        Bottom
+                      </button>
+                      <button
+                        className={`rounded-xl px-3 py-2 text-xs font-semibold ${readingPane === "list" ? "bg-brand-100 text-brand-700" : "bg-white text-surface-600 border border-surface-200"}`}
+                        type="button"
+                        onClick={() => setReadingPane("list")}
+                      >
+                        List only
+                      </button>
+                    </div>
+
+                    <div className="mt-5 grid gap-4">
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-surface-500">Sidebar width: {sidebarWidth}px</span>
+                        <input
+                          className="mt-2 w-full"
+                          type="range"
+                          min={240}
+                          max={420}
+                          value={sidebarWidth}
+                          onChange={(event) => setSidebarWidth(Number(event.target.value))}
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-surface-500">Message list width: {listWidth}px</span>
+                        <input
+                          className="mt-2 w-full"
+                          type="range"
+                          min={280}
+                          max={620}
+                          value={listWidth}
+                          onChange={(event) => setListWidth(Number(event.target.value))}
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-surface-500">Bottom pane height: {bottomPaneHeight}px</span>
+                        <input
+                          className="mt-2 w-full"
+                          type="range"
+                          min={220}
+                          max={640}
+                          value={bottomPaneHeight}
+                          onChange={(event) => setBottomPaneHeight(Number(event.target.value))}
+                        />
+                      </label>
+                    </div>
+
+                    <div className="mt-4">
+                      <button
+                        className="rounded-xl border border-brand-200 bg-white px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+                        type="button"
+                        onClick={() => {
+                          setReadingPane("right");
+                          setSidebarWidth(272);
+                          setListWidth(340);
+                          setBottomPaneHeight(320);
+                        }}
+                      >
+                        Reset layout defaults
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
+
+                {settingsTab === "behavior" ? (
+                  <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-surface-800">Auto-open first message</p>
+                        <p className="text-xs text-surface-500">Automatically select the newest message when entering a folder.</p>
+                      </div>
+                      <button
+                        className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.autoOpenFirstMessage ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
+                        type="button"
+                        onClick={() =>
+                          setSettings((current) => ({
+                            ...current,
+                            autoOpenFirstMessage: !current.autoOpenFirstMessage
+                          }))
+                        }
+                      >
+                        {settings.autoOpenFirstMessage ? "Enabled" : "Disabled"}
+                      </button>
+                    </div>
+
+                    <label className="mt-4 block">
+                      <span className="mb-2 block text-sm font-medium text-surface-700">Messages per page fetch</span>
+                      <select
+                        className="w-full rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm text-surface-900 outline-none"
+                        value={settings.messagePageSize}
+                        onChange={(event) => {
+                          const raw = Number(event.target.value);
+                          const pageSize = raw === 50 || raw === 100 ? raw : 25;
+                          setSettings((current) => ({
+                            ...current,
+                            messagePageSize: pageSize
+                          }));
+                          setMessageLimit(pageSize);
+                        }}
+                      >
+                        <option value={25}>25 messages</option>
+                        <option value={50}>50 messages</option>
+                        <option value={100}>100 messages</option>
+                      </select>
+                    </label>
+                  </section>
+                ) : null}
               </div>
             </div>
           </div>
