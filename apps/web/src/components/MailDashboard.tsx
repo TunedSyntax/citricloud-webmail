@@ -10,6 +10,7 @@ import {
   CheckSquare,
   CirclePlus,
   ChevronDown,
+  Cog,
   Flag,
   FolderPlus,
   Forward,
@@ -95,6 +96,12 @@ type LabelEditorState = {
   iconIndex: number;
 };
 
+type DashboardSettings = {
+  displayName: string;
+  soundEnabled: boolean;
+  syncLabelsEnabled: boolean;
+};
+
 const sidebarItems = [
   { label: "Inbox", icon: Inbox, fallback: "INBOX" },
   { label: "Starred", icon: Star, fallback: "__STARRED__" },
@@ -112,6 +119,7 @@ const bottomPaneHeightStorageKey = "citricloud-webmail.bottom-pane-height";
 const readingPaneStorageKey = "citricloud-webmail.reading-pane";
 const userLabelsStorageKeyPrefix = "citricloud-webmail.user-labels";
 const messageLabelAssignmentsStorageKeyPrefix = "citricloud-webmail.message-label-assignments";
+const dashboardSettingsStorageKeyPrefix = "citricloud-webmail.dashboard-settings";
 const compactBreakpoint = 1024;
 
 function hashString(str: string): number {
@@ -321,6 +329,39 @@ function toMessageKey(folder: string, uid: number) {
   return `${folder}::${uid}`;
 }
 
+function buildDefaultDisplayName(email: string) {
+  const localPart = email.split("@")[0] ?? email;
+  return localPart.replace(/[._-]+/g, " ").trim() || email;
+}
+
+function readDashboardSettings(storageKey: string, email: string): DashboardSettings {
+  const fallback: DashboardSettings = {
+    displayName: buildDefaultDisplayName(email),
+    soundEnabled: true,
+    syncLabelsEnabled: true
+  };
+
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  const raw = window.localStorage.getItem(storageKey);
+  if (!raw) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<DashboardSettings>;
+    return {
+      displayName: typeof parsed.displayName === "string" && parsed.displayName.trim() ? parsed.displayName : fallback.displayName,
+      soundEnabled: parsed.soundEnabled ?? fallback.soundEnabled,
+      syncLabelsEnabled: parsed.syncLabelsEnabled ?? fallback.syncLabelsEnabled
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 export function MailDashboard({
   session,
   initialFolders,
@@ -356,6 +397,10 @@ export function MailDashboard({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [composerDraft, setComposerDraft] = useState<ComposeDraft | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const dashboardSettingsStorageKey = `${dashboardSettingsStorageKeyPrefix}.${session.email.toLowerCase()}`;
+  const [settings, setSettings] = useState<DashboardSettings>(() => readDashboardSettings(dashboardSettingsStorageKey, session.email));
+  const [isSyncingLabels, setIsSyncingLabels] = useState(false);
   const [messageHeaderMenuOpen, setMessageHeaderMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: MessagePreview } | null>(null);
   const [selectedMessageSourceFolder, setSelectedMessageSourceFolder] = useState<string | null>(null);
@@ -372,6 +417,7 @@ export function MailDashboard({
   const queryClient = useQueryClient();
   const userLabelsStorageKey = `${userLabelsStorageKeyPrefix}.${session.email.toLowerCase()}`;
   const messageLabelAssignmentsStorageKey = `${messageLabelAssignmentsStorageKeyPrefix}.${session.email.toLowerCase()}`;
+  const displayName = settings.displayName.trim() || buildDefaultDisplayName(session.email);
 
   const foldersQuery = useQuery({
     queryKey: ["folders", session.token],
@@ -670,6 +716,18 @@ export function MailDashboard({
   }, [activeFolder]);
 
   useEffect(() => {
+    setSettings(readDashboardSettings(dashboardSettingsStorageKey, session.email));
+  }, [dashboardSettingsStorageKey, session.email]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(dashboardSettingsStorageKey, JSON.stringify(settings));
+  }, [dashboardSettingsStorageKey, settings]);
+
+  useEffect(() => {
     if (!selectedMessageKeys.size) {
       setDragMoveMode(false);
     }
@@ -689,13 +747,13 @@ export function MailDashboard({
     if (previousKeys.length && currentKeys.length) {
       const previousFirst = previousKeys[0];
       const currentFirst = currentKeys[0];
-      if (previousFirst !== currentFirst) {
+      if (previousFirst !== currentFirst && settings.soundEnabled) {
         playNotificationTone();
       }
     }
 
     knownMessageKeysByFolderRef.current[activeFolder] = currentKeys;
-  }, [activeFolder, messagesQuery.data?.messages]);
+  }, [activeFolder, messagesQuery.data?.messages, settings.soundEnabled]);
 
   useEffect(() => {
     if (!resizeTarget) {
@@ -822,6 +880,14 @@ export function MailDashboard({
     }
   }, [selectedLabelId, userLabels]);
 
+  useEffect(() => {
+    if (!settings.syncLabelsEnabled) {
+      return;
+    }
+
+    void syncLabelsWithImapFolders();
+  }, [settings.syncLabelsEnabled, customImapFolders, userLabels]);
+
   const customImapFolders = useMemo(() => {
     const systemFolderNames = ["inbox", "sent", "draft", "trash", "junk", "spam", "archive", "starred"];
 
@@ -831,6 +897,76 @@ export function MailDashboard({
       return !hasSystemName && !folder.specialUse;
     });
   }, [availableFolders]);
+
+  const normalizedCustomFolderNames = useMemo(() => {
+    return new Set(customImapFolders.map((folder) => folder.name.trim().toLowerCase()));
+  }, [customImapFolders]);
+
+  const normalizedLabelNames = useMemo(() => {
+    return new Set(userLabels.map((label) => label.name.trim().toLowerCase()));
+  }, [userLabels]);
+
+  const labelsMissingFolderCount = useMemo(() => {
+    return userLabels.filter((label) => !normalizedCustomFolderNames.has(label.name.trim().toLowerCase())).length;
+  }, [normalizedCustomFolderNames, userLabels]);
+
+  const foldersMissingLabelCount = useMemo(() => {
+    return customImapFolders.filter((folder) => !normalizedLabelNames.has(folder.name.trim().toLowerCase())).length;
+  }, [customImapFolders, normalizedLabelNames]);
+
+  const syncLabelsWithImapFolders = async () => {
+    if (isSyncingLabels) {
+      return;
+    }
+
+    setIsSyncingLabels(true);
+
+    try {
+      const missingLabelFolders = customImapFolders.filter((folder) => !normalizedLabelNames.has(folder.name.trim().toLowerCase()));
+
+      if (missingLabelFolders.length) {
+        setUserLabels((current) => {
+          const existingNames = new Set(current.map((label) => label.name.trim().toLowerCase()));
+          const additions: UserLabel[] = [];
+
+          for (const folder of missingLabelFolders) {
+            const normalizedName = folder.name.trim().toLowerCase();
+            if (existingNames.has(normalizedName)) {
+              continue;
+            }
+
+            const hash = hashString(folder.name);
+            additions.push({
+              id: `${Date.now()}-${hash}-${normalizedName}`,
+              name: folder.name,
+              colorIndex: hash % LABEL_COLOR_PALETTE.length,
+              iconIndex: hash % LABEL_ICONS.length
+            });
+            existingNames.add(normalizedName);
+          }
+
+          return additions.length ? [...current, ...additions] : current;
+        });
+      }
+
+      const missingFolderLabels = userLabels.filter((label) => !normalizedCustomFolderNames.has(label.name.trim().toLowerCase()));
+
+      for (const label of missingFolderLabels) {
+        await createFolderRequest(session.token, label.name);
+      }
+
+      if (missingFolderLabels.length) {
+        await foldersQuery.refetch();
+      }
+
+      setActionError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to synchronize labels.";
+      setActionError(message);
+    } finally {
+      setIsSyncingLabels(false);
+    }
+  };
 
   const userLabelMap = useMemo(() => {
     return new Map(userLabels.map((label) => [label.id, label]));
@@ -1568,6 +1704,17 @@ export function MailDashboard({
           <button className="inline-flex items-center gap-2 rounded-2xl bg-brand-400 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500" type="button" onClick={openNewComposer}>
             New Message
           </button>
+          <button
+            className="inline-flex items-center rounded-2xl border border-surface-200 bg-white p-2.5 text-surface-700 hover:bg-surface-50"
+            title="Settings"
+            type="button"
+            onClick={() => {
+              setAccountMenuOpen(false);
+              setSettingsOpen(true);
+            }}
+          >
+            <Cog className="h-4 w-4" />
+          </button>
           <div className="relative">
             <button
               className="inline-flex items-center gap-3 rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm text-surface-700"
@@ -1575,14 +1722,15 @@ export function MailDashboard({
               onClick={() => setAccountMenuOpen((current) => !current)}
             >
               <UserCircle2 className="h-5 w-5 text-brand-600" />
-              {session.email}
+              {displayName}
               <ChevronDown className="h-4 w-4" />
             </button>
 
             {accountMenuOpen ? (
               <div className="absolute right-0 top-[calc(100%+0.5rem)] z-20 w-80 rounded-3xl border border-surface-200 bg-white p-3 shadow-panel">
                 <div className="border-b border-surface-200 px-3 pb-3">
-                  <p className="text-sm font-semibold text-surface-900">{session.email}</p>
+                  <p className="text-sm font-semibold text-surface-900">{displayName}</p>
+                  <p className="text-xs text-surface-500">{session.email}</p>
                   <p className="text-xs text-surface-500">Current session · {session.presetKey}</p>
                 </div>
 
@@ -1648,7 +1796,8 @@ export function MailDashboard({
           <div className="mb-4 border-b border-white/20 pb-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-100">Connected environment</p>
             <p className="mt-2 text-base font-semibold">{session.presetKey}</p>
-            <p className="text-xs text-brand-100">{session.email}</p>
+            <p className="text-xs text-brand-100">{displayName}</p>
+            <p className="text-[11px] text-brand-100/80">{session.email}</p>
           </div>
 
           <nav className="space-y-2">
@@ -2368,6 +2517,127 @@ export function MailDashboard({
         </div>
       </footer>
       </section>
+
+      {settingsOpen ? (
+        <>
+          <div className="fixed inset-0 z-40 bg-surface-900/35 backdrop-blur-sm" onMouseDown={() => setSettingsOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-2xl rounded-[28px] border border-surface-200 bg-white p-6 shadow-panel"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-500">Account Settings</p>
+                  <h3 className="mt-2 text-xl font-semibold text-surface-900">Mailbox preferences</h3>
+                  <p className="mt-1 text-sm text-surface-500">These settings are saved per signed-in account.</p>
+                </div>
+                <button
+                  className="rounded-xl border border-surface-200 px-3 py-2 text-sm text-surface-500 hover:bg-surface-50"
+                  type="button"
+                  onClick={() => setSettingsOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-6 space-y-6">
+                <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-surface-500">Profile</p>
+                  <label className="mt-3 block">
+                    <span className="mb-2 block text-sm font-medium text-surface-700">Display name</span>
+                    <input
+                      className="w-full rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm text-surface-900 outline-none transition focus:border-brand-300"
+                      value={settings.displayName}
+                      onChange={(event) =>
+                        setSettings((current) => ({
+                          ...current,
+                          displayName: event.target.value
+                        }))
+                      }
+                      placeholder={buildDefaultDisplayName(session.email)}
+                    />
+                  </label>
+                  <p className="mt-2 text-xs text-surface-500">Email identity remains {session.email}.</p>
+                </section>
+
+                <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-surface-800">Sound notifications</p>
+                      <p className="text-xs text-surface-500">Play a tone when a new message arrives at the top of the active folder.</p>
+                    </div>
+                    <button
+                      className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.soundEnabled ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
+                      type="button"
+                      onClick={() =>
+                        setSettings((current) => ({
+                          ...current,
+                          soundEnabled: !current.soundEnabled
+                        }))
+                      }
+                    >
+                      {settings.soundEnabled ? "On" : "Off"}
+                    </button>
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-surface-800">Synchronized labels</p>
+                      <p className="text-xs text-surface-500">Keep webmail labels and custom IMAP folders in sync in both directions.</p>
+                    </div>
+                    <button
+                      className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.syncLabelsEnabled ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
+                      type="button"
+                      onClick={() =>
+                        setSettings((current) => ({
+                          ...current,
+                          syncLabelsEnabled: !current.syncLabelsEnabled
+                        }))
+                      }
+                    >
+                      {settings.syncLabelsEnabled ? "Enabled" : "Disabled"}
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 text-xs text-surface-600 sm:grid-cols-3">
+                    <div className="rounded-xl border border-surface-200 bg-white px-3 py-2">
+                      <p className="font-semibold text-surface-700">Labels</p>
+                      <p>{userLabels.length}</p>
+                    </div>
+                    <div className="rounded-xl border border-surface-200 bg-white px-3 py-2">
+                      <p className="font-semibold text-surface-700">Custom IMAP folders</p>
+                      <p>{customImapFolders.length}</p>
+                    </div>
+                    <div className="rounded-xl border border-surface-200 bg-white px-3 py-2">
+                      <p className="font-semibold text-surface-700">Out of sync</p>
+                      <p>{labelsMissingFolderCount + foldersMissingLabelCount}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <p className="text-xs text-surface-500">
+                      Missing folders for labels: {labelsMissingFolderCount} · Missing labels for folders: {foldersMissingLabelCount}
+                    </p>
+                    <button
+                      className="rounded-xl border border-brand-200 bg-white px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      type="button"
+                      disabled={isSyncingLabels}
+                      onClick={() => {
+                        void syncLabelsWithImapFolders();
+                      }}
+                    >
+                      {isSyncingLabels ? "Synchronizing..." : "Sync now"}
+                    </button>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
 
       {contextMenu ? (
         <>
