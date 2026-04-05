@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowRight, Cable, History, Lock, Mail, Server } from "lucide-react";
 
@@ -33,6 +33,7 @@ export function AccountSetupWizard({
   const [imap, setImap] = useState(defaultConnection);
   const [smtp, setSmtp] = useState({ host: "", port: 587, secure: false });
   const [advancedMode, setAdvancedMode] = useState(false);
+  const lastDetectedEmailRef = useRef<string>("");
 
   const profilesQuery = useQuery({
     queryKey: ["profiles"],
@@ -40,7 +41,7 @@ export function AccountSetupWizard({
   });
 
   const detectMutation = useMutation({
-    mutationFn: ({ nextEmail, presetKey }: { nextEmail: string; presetKey?: string }) => detectProfile(nextEmail, presetKey),
+    mutationFn: ({ nextEmail }: { nextEmail: string }) => detectProfile(nextEmail),
     onSuccess: ({ profile }) => {
       setSelectedPreset(profile.key);
       setImap(profile.imap);
@@ -67,12 +68,32 @@ export function AccountSetupWizard({
   const recommendedProfile = detectMutation.data?.profile;
 
   const handleDetect = () => {
-    if (!email) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
       return;
     }
 
-    detectMutation.mutate({ nextEmail: email, presetKey: selectedPreset });
+    lastDetectedEmailRef.current = normalizedEmail;
+    detectMutation.mutate({ nextEmail: normalizedEmail });
   };
+
+  useEffect(() => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const hasAtSymbol = normalizedEmail.includes("@");
+
+    if (!hasAtSymbol || normalizedEmail === lastDetectedEmailRef.current) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      lastDetectedEmailRef.current = normalizedEmail;
+      detectMutation.mutate({ nextEmail: normalizedEmail });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [email, detectMutation]);
 
   const handlePresetChange = (profiles: ConnectionProfile[], nextPreset: string) => {
     setSelectedPreset(nextPreset);
@@ -105,8 +126,8 @@ export function AccountSetupWizard({
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
             {[
-              ["External", "mail.citricloud.com", "Postfix / Dovecot"],
-              ["Internal", "ems.citricloud.com", "Mailcow"],
+              ["k3s-prod (internal)", "mail.citricloud.com", "Postfix / Dovecot"],
+              ["k3s-mgmt (external)", "ems.citricloud.com", "Mailcow"],
               ["Webmail", "webmail.citricloud.com", "Public CitriCloud entrypoint"]
             ].map(([title, value, detail]) => (
               <article key={title} className="rounded-3xl border border-surface-200 bg-white/80 p-4 shadow-panel">
