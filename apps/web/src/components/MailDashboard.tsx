@@ -102,9 +102,17 @@ type DashboardSettings = {
   syncLabelsEnabled: boolean;
   autoOpenFirstMessage: boolean;
   messagePageSize: 25 | 50 | 100;
+  defaultUnreadOnly: boolean;
+  defaultDateRange: "all" | "7d" | "30d";
+  defaultCategoryFilter: "all" | "ops" | "security" | "billing";
+  defaultStatusFilter: "all" | "read" | "unread" | "flagged";
+  autoRefreshFolders: boolean;
+  folderRefreshSeconds: 30 | 60 | 120 | 300;
+  autoRefreshMessages: boolean;
+  messageRefreshSeconds: 15 | 30 | 60 | 120;
 };
 
-type SettingsTab = "general" | "notifications" | "labels" | "layout" | "behavior";
+type SettingsTab = "general" | "notifications" | "labels" | "layout" | "inbox" | "data";
 
 const sidebarItems = [
   { label: "Inbox", icon: Inbox, fallback: "INBOX" },
@@ -344,7 +352,15 @@ function readDashboardSettings(storageKey: string, email: string): DashboardSett
     soundEnabled: true,
     syncLabelsEnabled: true,
     autoOpenFirstMessage: true,
-    messagePageSize: 25
+    messagePageSize: 25,
+    defaultUnreadOnly: false,
+    defaultDateRange: "all",
+    defaultCategoryFilter: "all",
+    defaultStatusFilter: "all",
+    autoRefreshFolders: true,
+    folderRefreshSeconds: 60,
+    autoRefreshMessages: true,
+    messageRefreshSeconds: 30
   };
 
   if (typeof window === "undefined") {
@@ -360,12 +376,28 @@ function readDashboardSettings(storageKey: string, email: string): DashboardSett
     const parsed = JSON.parse(raw) as Partial<DashboardSettings>;
     const parsedPageSize = parsed.messagePageSize;
     const messagePageSize = parsedPageSize === 50 || parsedPageSize === 100 ? parsedPageSize : 25;
+    const folderRefreshSeconds = parsed.folderRefreshSeconds === 30 || parsed.folderRefreshSeconds === 120 || parsed.folderRefreshSeconds === 300 ? parsed.folderRefreshSeconds : 60;
+    const messageRefreshSeconds = parsed.messageRefreshSeconds === 15 || parsed.messageRefreshSeconds === 60 || parsed.messageRefreshSeconds === 120 ? parsed.messageRefreshSeconds : 30;
     return {
       displayName: typeof parsed.displayName === "string" && parsed.displayName.trim() ? parsed.displayName : fallback.displayName,
       soundEnabled: parsed.soundEnabled ?? fallback.soundEnabled,
       syncLabelsEnabled: parsed.syncLabelsEnabled ?? fallback.syncLabelsEnabled,
       autoOpenFirstMessage: parsed.autoOpenFirstMessage ?? fallback.autoOpenFirstMessage,
-      messagePageSize
+      messagePageSize,
+      defaultUnreadOnly: parsed.defaultUnreadOnly ?? fallback.defaultUnreadOnly,
+      defaultDateRange: parsed.defaultDateRange === "7d" || parsed.defaultDateRange === "30d" ? parsed.defaultDateRange : fallback.defaultDateRange,
+      defaultCategoryFilter:
+        parsed.defaultCategoryFilter === "ops" || parsed.defaultCategoryFilter === "security" || parsed.defaultCategoryFilter === "billing"
+          ? parsed.defaultCategoryFilter
+          : fallback.defaultCategoryFilter,
+      defaultStatusFilter:
+        parsed.defaultStatusFilter === "read" || parsed.defaultStatusFilter === "unread" || parsed.defaultStatusFilter === "flagged"
+          ? parsed.defaultStatusFilter
+          : fallback.defaultStatusFilter,
+      autoRefreshFolders: parsed.autoRefreshFolders ?? fallback.autoRefreshFolders,
+      folderRefreshSeconds,
+      autoRefreshMessages: parsed.autoRefreshMessages ?? fallback.autoRefreshMessages,
+      messageRefreshSeconds
     };
   } catch {
     return fallback;
@@ -380,6 +412,8 @@ export function MailDashboard({
   onSignedOut,
   onAddAccount
 }: MailDashboardProps) {
+  const dashboardSettingsStorageKey = `${dashboardSettingsStorageKeyPrefix}.${session.email.toLowerCase()}`;
+  const initialDashboardSettings = readDashboardSettings(dashboardSettingsStorageKey, session.email);
   const [activeFolder, setActiveFolder] = useState(initialFolders[0]?.path ?? "INBOX");
   const [selectedUid, setSelectedUid] = useState<number | null>(null);
   const [searchText, setSearchText] = useState("");
@@ -391,17 +425,17 @@ export function MailDashboard({
   const [paneMenuOpen, setPaneMenuOpen] = useState(false);
   const [isCompactViewport, setIsCompactViewport] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
-  const [filterUnread, setFilterUnread] = useState(false);
-  const [dateRange, setDateRange] = useState<"all" | "7d" | "30d">("all");
-  const [categoryFilter, setCategoryFilter] = useState<"all" | "ops" | "security" | "billing">("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "read" | "unread" | "flagged">("all");
+  const [filterUnread, setFilterUnread] = useState(initialDashboardSettings.defaultUnreadOnly);
+  const [dateRange, setDateRange] = useState<"all" | "7d" | "30d">(initialDashboardSettings.defaultDateRange);
+  const [categoryFilter, setCategoryFilter] = useState<"all" | "ops" | "security" | "billing">(initialDashboardSettings.defaultCategoryFilter);
+  const [statusFilter, setStatusFilter] = useState<"all" | "read" | "unread" | "flagged">(initialDashboardSettings.defaultStatusFilter);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [userLabels, setUserLabels] = useState<UserLabel[]>([]);
   const [messageLabelAssignments, setMessageLabelAssignments] = useState<MessageLabelAssignments>({});
   const [labelEditor, setLabelEditor] = useState<LabelEditorState | null>(null);
   const [missingLabelsModalOpen, setMissingLabelsModalOpen] = useState(false);
-  const [messageLimit, setMessageLimit] = useState(25);
+  const [messageLimit, setMessageLimit] = useState(initialDashboardSettings.messagePageSize);
   const [selectMenuOpen, setSelectMenuOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -409,8 +443,7 @@ export function MailDashboard({
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
-  const dashboardSettingsStorageKey = `${dashboardSettingsStorageKeyPrefix}.${session.email.toLowerCase()}`;
-  const [settings, setSettings] = useState<DashboardSettings>(() => readDashboardSettings(dashboardSettingsStorageKey, session.email));
+  const [settings, setSettings] = useState<DashboardSettings>(initialDashboardSettings);
   const [isSyncingLabels, setIsSyncingLabels] = useState(false);
   const [messageHeaderMenuOpen, setMessageHeaderMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: MessagePreview } | null>(null);
@@ -439,7 +472,7 @@ export function MailDashboard({
     queryFn: () => getFolders(session.token),
     initialData: { folders: initialFolders },
     staleTime: 0,
-    refetchInterval: 60_000,
+    refetchInterval: settings.autoRefreshFolders ? settings.folderRefreshSeconds * 1000 : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true
   });
@@ -448,7 +481,7 @@ export function MailDashboard({
     queryKey: ["messages", session.token, activeFolder, messageLimit],
     queryFn: () => getMessages(session.token, activeFolder, messageLimit),
     staleTime: 0,
-    refetchInterval: 30_000,
+    refetchInterval: settings.autoRefreshMessages ? settings.messageRefreshSeconds * 1000 : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true
   });
@@ -731,7 +764,13 @@ export function MailDashboard({
   }, [activeFolder, settings.messagePageSize]);
 
   useEffect(() => {
-    setSettings(readDashboardSettings(dashboardSettingsStorageKey, session.email));
+    const nextSettings = readDashboardSettings(dashboardSettingsStorageKey, session.email);
+    setSettings(nextSettings);
+    setFilterUnread(nextSettings.defaultUnreadOnly);
+    setDateRange(nextSettings.defaultDateRange);
+    setCategoryFilter(nextSettings.defaultCategoryFilter);
+    setStatusFilter(nextSettings.defaultStatusFilter);
+    setMessageLimit(nextSettings.messagePageSize);
   }, [dashboardSettingsStorageKey, session.email]);
 
   useEffect(() => {
@@ -2563,7 +2602,8 @@ export function MailDashboard({
                   ["notifications", "Notifications"],
                   ["labels", "Labels Sync"],
                   ["layout", "Layout"],
-                  ["behavior", "Behavior"]
+                  ["inbox", "Inbox"],
+                  ["data", "Data"]
                 ].map(([key, label]) => (
                   <button
                     key={key}
@@ -2766,7 +2806,7 @@ export function MailDashboard({
                   </section>
                 ) : null}
 
-                {settingsTab === "behavior" ? (
+                {settingsTab === "inbox" ? (
                   <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -2807,6 +2847,180 @@ export function MailDashboard({
                         <option value={100}>100 messages</option>
                       </select>
                     </label>
+
+                    <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="mb-2 block text-sm font-medium text-surface-700">Default date filter</span>
+                        <select
+                          className="w-full rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm text-surface-900 outline-none"
+                          value={settings.defaultDateRange}
+                          onChange={(event) => {
+                            const value = event.target.value === "7d" || event.target.value === "30d" ? event.target.value : "all";
+                            setSettings((current) => ({ ...current, defaultDateRange: value }));
+                            setDateRange(value);
+                          }}
+                        >
+                          <option value="all">All time</option>
+                          <option value="7d">Last 7 days</option>
+                          <option value="30d">Last 30 days</option>
+                        </select>
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-2 block text-sm font-medium text-surface-700">Default category filter</span>
+                        <select
+                          className="w-full rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm text-surface-900 outline-none"
+                          value={settings.defaultCategoryFilter}
+                          onChange={(event) => {
+                            const value = event.target.value === "ops" || event.target.value === "security" || event.target.value === "billing" ? event.target.value : "all";
+                            setSettings((current) => ({ ...current, defaultCategoryFilter: value }));
+                            setCategoryFilter(value);
+                          }}
+                        >
+                          <option value="all">All categories</option>
+                          <option value="ops">Ops</option>
+                          <option value="security">Security</option>
+                          <option value="billing">Billing</option>
+                        </select>
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-2 block text-sm font-medium text-surface-700">Default status filter</span>
+                        <select
+                          className="w-full rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm text-surface-900 outline-none"
+                          value={settings.defaultStatusFilter}
+                          onChange={(event) => {
+                            const value = event.target.value === "read" || event.target.value === "unread" || event.target.value === "flagged" ? event.target.value : "all";
+                            setSettings((current) => ({ ...current, defaultStatusFilter: value }));
+                            setStatusFilter(value);
+                          }}
+                        >
+                          <option value="all">All statuses</option>
+                          <option value="read">Read</option>
+                          <option value="unread">Unread</option>
+                          <option value="flagged">Flagged</option>
+                        </select>
+                      </label>
+
+                      <div className="flex items-center justify-between rounded-2xl border border-surface-200 bg-white px-4 py-3">
+                        <div>
+                          <p className="text-sm font-medium text-surface-800">Unread only by default</p>
+                          <p className="text-xs text-surface-500">Apply unread filtering when the inbox opens.</p>
+                        </div>
+                        <button
+                          className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.defaultUnreadOnly ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
+                          type="button"
+                          onClick={() => {
+                            const nextValue = !settings.defaultUnreadOnly;
+                            setSettings((current) => ({ ...current, defaultUnreadOnly: nextValue }));
+                            setFilterUnread(nextValue);
+                          }}
+                        >
+                          {settings.defaultUnreadOnly ? "Enabled" : "Disabled"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <button
+                        className="rounded-xl border border-brand-200 bg-white px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+                        type="button"
+                        onClick={() => {
+                          setFilterUnread(settings.defaultUnreadOnly);
+                          setDateRange(settings.defaultDateRange);
+                          setCategoryFilter(settings.defaultCategoryFilter);
+                          setStatusFilter(settings.defaultStatusFilter);
+                        }}
+                      >
+                        Apply inbox defaults now
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
+
+                {settingsTab === "data" ? (
+                  <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-surface-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-surface-800">Folder auto refresh</p>
+                            <p className="text-xs text-surface-500">Background refresh for IMAP folder list.</p>
+                          </div>
+                          <button
+                            className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.autoRefreshFolders ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
+                            type="button"
+                            onClick={() => setSettings((current) => ({ ...current, autoRefreshFolders: !current.autoRefreshFolders }))}
+                          >
+                            {settings.autoRefreshFolders ? "On" : "Off"}
+                          </button>
+                        </div>
+                        <label className="mt-4 block">
+                          <span className="mb-2 block text-sm font-medium text-surface-700">Folder refresh interval</span>
+                          <select
+                            className="w-full rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none"
+                            value={settings.folderRefreshSeconds}
+                            onChange={(event) => {
+                              const value = Number(event.target.value);
+                              const interval = value === 30 || value === 120 || value === 300 ? value : 60;
+                              setSettings((current) => ({ ...current, folderRefreshSeconds: interval }));
+                            }}
+                          >
+                            <option value={30}>30 seconds</option>
+                            <option value={60}>60 seconds</option>
+                            <option value={120}>120 seconds</option>
+                            <option value={300}>300 seconds</option>
+                          </select>
+                        </label>
+                        <button
+                          className="mt-4 rounded-xl border border-brand-200 bg-surface-50 px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+                          type="button"
+                          onClick={runFolderSync}
+                        >
+                          Refresh folders now
+                        </button>
+                      </div>
+
+                      <div className="rounded-2xl border border-surface-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-surface-800">Message auto refresh</p>
+                            <p className="text-xs text-surface-500">Background refresh for the active message list.</p>
+                          </div>
+                          <button
+                            className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.autoRefreshMessages ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
+                            type="button"
+                            onClick={() => setSettings((current) => ({ ...current, autoRefreshMessages: !current.autoRefreshMessages }))}
+                          >
+                            {settings.autoRefreshMessages ? "On" : "Off"}
+                          </button>
+                        </div>
+                        <label className="mt-4 block">
+                          <span className="mb-2 block text-sm font-medium text-surface-700">Message refresh interval</span>
+                          <select
+                            className="w-full rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none"
+                            value={settings.messageRefreshSeconds}
+                            onChange={(event) => {
+                              const value = Number(event.target.value);
+                              const interval = value === 15 || value === 60 || value === 120 ? value : 30;
+                              setSettings((current) => ({ ...current, messageRefreshSeconds: interval }));
+                            }}
+                          >
+                            <option value={15}>15 seconds</option>
+                            <option value={30}>30 seconds</option>
+                            <option value={60}>60 seconds</option>
+                            <option value={120}>120 seconds</option>
+                          </select>
+                        </label>
+                        <button
+                          className="mt-4 rounded-xl border border-brand-200 bg-surface-50 px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+                          type="button"
+                          onClick={runMessagesSync}
+                        >
+                          Refresh messages now
+                        </button>
+                      </div>
+                    </div>
                   </section>
                 ) : null}
               </div>
