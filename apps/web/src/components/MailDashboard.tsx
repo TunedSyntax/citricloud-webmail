@@ -880,14 +880,6 @@ export function MailDashboard({
     }
   }, [selectedLabelId, userLabels]);
 
-  useEffect(() => {
-    if (!settings.syncLabelsEnabled) {
-      return;
-    }
-
-    void syncLabelsWithImapFolders();
-  }, [settings.syncLabelsEnabled, customImapFolders, userLabels]);
-
   const customImapFolders = useMemo(() => {
     const systemFolderNames = ["inbox", "sent", "draft", "trash", "junk", "spam", "archive", "starred"];
 
@@ -967,6 +959,14 @@ export function MailDashboard({
       setIsSyncingLabels(false);
     }
   };
+
+  useEffect(() => {
+    if (!settings.syncLabelsEnabled) {
+      return;
+    }
+
+    void syncLabelsWithImapFolders();
+  }, [settings.syncLabelsEnabled, customImapFolders, userLabels]);
 
   const userLabelMap = useMemo(() => {
     return new Map(userLabels.map((label) => [label.id, label]));
