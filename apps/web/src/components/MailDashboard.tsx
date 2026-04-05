@@ -435,7 +435,7 @@ export function MailDashboard({
   const [messageLabelAssignments, setMessageLabelAssignments] = useState<MessageLabelAssignments>({});
   const [labelEditor, setLabelEditor] = useState<LabelEditorState | null>(null);
   const [missingLabelsModalOpen, setMissingLabelsModalOpen] = useState(false);
-  const [messageLimit, setMessageLimit] = useState(initialDashboardSettings.messagePageSize);
+  const [messageLimit, setMessageLimit] = useState<number>(initialDashboardSettings.messagePageSize);
   const [selectMenuOpen, setSelectMenuOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -1459,7 +1459,7 @@ export function MailDashboard({
 
     if (distanceFromBottom < 80 && canLoadMore && !messagesQuery.isFetching && !isLoadingMore) {
       setIsLoadingMore(true);
-      setMessageLimit((current) => current + 25);
+      setMessageLimit((current) => current + settings.messagePageSize);
     }
   };
 
