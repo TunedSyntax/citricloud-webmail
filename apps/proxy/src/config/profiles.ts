@@ -34,8 +34,24 @@ function loadMailPresets(): MailConnectionPreset[] {
 
 export const mailPresets: MailConnectionPreset[] = loadMailPresets();
 
+function findPresetByMailHost(host: string): MailConnectionPreset | undefined {
+  const expectedHost = host.toLowerCase();
+  return mailPresets.find(
+    (preset) => preset.imap.host.toLowerCase() === expectedHost || preset.smtp.host.toLowerCase() === expectedHost
+  );
+}
+
 export function detectPresetByEmail(email: string): MailConnectionPreset {
   const domain = email.split("@").at(1)?.toLowerCase() ?? "";
+
+  if (domain === "citricloud.com") {
+    return findPresetByMailHost("mail.citricloud.com") ?? mailPresets[0];
+  }
+
+  if (domain.endsWith(".citricloud.com")) {
+    return findPresetByMailHost("ems.citricloud.com") ?? mailPresets[0];
+  }
+
   const exactMatch = mailPresets.find((preset) => domain === preset.domainSuffix);
 
   if (exactMatch) {

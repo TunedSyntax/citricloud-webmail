@@ -20,7 +20,7 @@ spec:
         - name: ghcr-pull-secret
       containers:
         - name: webmail
-          image: ghcr.io/tunedsyntax/citricloud-webmail:v0.0.1-beta.3
+          image: ghcr.io/tunedsyntax/citricloud-webmail:v0.0.1-beta.5
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

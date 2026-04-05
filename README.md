@@ -10,8 +10,8 @@ Professional webmail client for CitriCloud with a React dashboard and a Node.js 
 
 ## CitriCloud server presets
 
-- `EXTERNAL` (`K3S-Prod`): `mail.citricloud.com`, domain suffix `<external-mail-domain>`
-- `INTERNAL` (`K3S-Mgmt`): `ems.citricloud.com`, domain suffix `<internal-mail-domain>`
+- `INTERNAL` (`K3S-Prod`): `mail.citricloud.com`, domain suffix `citricloud.com`
+- `EXTERNAL` (`K3S-Mgmt`): `ems.citricloud.com`, domain suffix `*.citricloud.com`
 
 The setup wizard automatically recommends the correct profile from the supplied mailbox address and lets operators override the connection settings when needed.
 
@@ -59,7 +59,7 @@ Rules:
 Validate a tag locally with:
 
 ```bash
-npm run guard:version -- v0.0.1-beta.4
+npm run guard:version -- v0.0.1-beta.5
 ```
 
 Production visibility is driven by the last deployed tag. A plain edit in VS Code does not change `webmail.citricloud.com` until you push a version tag that triggers the deploy workflow.
