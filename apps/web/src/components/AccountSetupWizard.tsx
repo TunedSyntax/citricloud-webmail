@@ -1,6 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowRight, Cable, CheckCircle2, Eye, EyeOff, History, Lock, Mail, Server, ShieldCheck } from "lucide-react";
+import {
+  ArrowRight,
+  Cable,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  History,
+  Lock,
+  Mail,
+  Server,
+  ShieldCheck,
+  Smartphone,
+  X
+} from "lucide-react";
 
 import { detectProfile, getProfiles, login, type AuthSession, type ConnectionProfile, type MailFolder } from "../lib/api";
 import type { SavedAccount } from "../App";
@@ -20,6 +33,15 @@ const defaultConnection = {
   secure: true
 };
 
+const mobileClientApps = [
+  { name: "Gmail", mark: "G", tone: "border-red-200 bg-red-50 text-red-700" },
+  { name: "Outlook", mark: "O", tone: "border-blue-200 bg-blue-50 text-blue-700" },
+  { name: "Yahoo Mail", mark: "Y", tone: "border-violet-200 bg-violet-50 text-violet-700" },
+  { name: "BlueMail", mark: "B", tone: "border-cyan-200 bg-cyan-50 text-cyan-700" },
+  { name: "Samsung Mail", mark: "S", tone: "border-sky-200 bg-sky-50 text-sky-700" },
+  { name: "Apple Mail", mark: "A", tone: "border-slate-200 bg-slate-50 text-slate-700" }
+] as const;
+
 function isLikelyEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
@@ -38,6 +60,7 @@ export function AccountSetupWizard({
   const [imap, setImap] = useState(defaultConnection);
   const [smtp, setSmtp] = useState({ host: "", port: 587, secure: false });
   const [advancedMode, setAdvancedMode] = useState(false);
+  const [showPhoneSetupModal, setShowPhoneSetupModal] = useState(false);
   const lastDetectedEmailRef = useRef<string>("");
 
   const profilesQuery = useQuery({
@@ -121,6 +144,8 @@ export function AccountSetupWizard({
       setSmtp(profile.smtp);
     }
   };
+
+  const closePhoneSetupModal = () => setShowPhoneSetupModal(false);
 
   return (
     <section className="relative h-full overflow-y-auto border border-surface-200 bg-white/85 p-6 shadow-glow backdrop-blur xl:p-8">
@@ -303,6 +328,15 @@ export function AccountSetupWizard({
             </div>
 
             <button
+              className="inline-flex w-full items-center justify-center gap-2 border border-brand-200 bg-brand-50 px-5 py-3 text-sm font-semibold text-brand-700 transition hover:border-brand-300 hover:bg-brand-100"
+              type="button"
+              onClick={() => setShowPhoneSetupModal(true)}
+            >
+              <Smartphone className="h-4 w-4" />
+              Connect on phone mail apps
+            </button>
+
+            <button
               className="text-sm font-medium text-brand-700"
               type="button"
               onClick={() => setAdvancedMode((current) => !current)}
@@ -396,6 +430,75 @@ export function AccountSetupWizard({
           </div>
         </div>
       </div>
+
+      {showPhoneSetupModal ? (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-surface-900/45 p-4">
+          <div className="w-full max-w-2xl border border-surface-200 bg-white shadow-panel">
+            <div className="flex items-start justify-between border-b border-surface-200 p-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Mobile email clients</p>
+                <h3 className="mt-1 font-display text-2xl font-semibold text-surface-900">Connect CitriCloud mail on your phone</h3>
+                <p className="mt-2 text-sm text-surface-600">Use any IMAP/SMTP app with the same credentials you use for webmail.</p>
+              </div>
+              <button
+                className="border border-surface-200 bg-white p-2 text-surface-600 hover:bg-surface-50"
+                type="button"
+                onClick={closePhoneSetupModal}
+                aria-label="Close setup modal"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-5 p-5">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {mobileClientApps.map((app) => (
+                  <div key={app.name} className="flex items-center gap-3 border border-surface-200 bg-surface-50 px-3 py-3">
+                    <div className={`flex h-9 w-9 items-center justify-center border text-sm font-semibold ${app.tone}`}>{app.mark}</div>
+                    <div>
+                      <p className="text-sm font-semibold text-surface-900">{app.name}</p>
+                      <p className="text-xs text-surface-500">IMAP / SMTP supported</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid gap-3 border border-surface-200 bg-surface-50 p-4 text-sm text-surface-700 sm:grid-cols-2">
+                <p>
+                  <strong>IMAP host:</strong> {imap.host || "Enter host first"}
+                </p>
+                <p>
+                  <strong>IMAP port:</strong> {imap.port} {imap.secure ? "(TLS)" : "(Plain)"}
+                </p>
+                <p>
+                  <strong>SMTP host:</strong> {smtp.host || "Enter host first"}
+                </p>
+                <p>
+                  <strong>SMTP port:</strong> {smtp.port} {smtp.secure ? "(TLS)" : "(Plain)"}
+                </p>
+              </div>
+
+              <div className="border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                <p className="font-semibold">Quick setup</p>
+                <p className="mt-2">1. Open your phone mail app and choose Add account or IMAP setup.</p>
+                <p>2. Enter your CitriCloud email and mailbox password.</p>
+                <p>3. Use the IMAP and SMTP values shown above.</p>
+                <p>4. Save and sync your mailbox.</p>
+              </div>
+            </div>
+
+            <div className="flex justify-end border-t border-surface-200 p-4">
+              <button
+                className="border border-surface-900 bg-surface-900 px-4 py-2 text-sm font-medium text-white hover:bg-surface-800"
+                type="button"
+                onClick={closePhoneSetupModal}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
