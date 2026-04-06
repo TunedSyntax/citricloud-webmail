@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { AccessPolicyPage } from "./components/AccessPolicyPage";
 import { AccountSetupWizard } from "./components/AccountSetupWizard";
 import { MailDashboard } from "./components/MailDashboard";
 import { WebmailIntroPage } from "./components/WebmailIntroPage";
@@ -78,6 +79,7 @@ export default function App() {
   const [lastActiveToken, setLastActiveToken] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [showIntroPage, setShowIntroPage] = useState(true);
+  const [showAccessPolicyPage, setShowAccessPolicyPage] = useState(false);
 
   useEffect(() => {
     const storedAccounts = readSavedAccounts();
@@ -202,6 +204,7 @@ export default function App() {
     }
 
     setShowIntroPage(true);
+    setShowAccessPolicyPage(false);
   };
 
   const handleAddAccount = () => {
@@ -209,6 +212,7 @@ export default function App() {
     setAuthState(null);
     setRestoreError(null);
     setShowIntroPage(true);
+    setShowAccessPolicyPage(false);
   };
 
   const isLoggedIn = Boolean(authState);
@@ -241,6 +245,13 @@ export default function App() {
           <WebmailIntroPage
             onContinue={() => {
               setShowIntroPage(false);
+              setShowAccessPolicyPage(true);
+            }}
+          />
+        ) : showAccessPolicyPage ? (
+          <AccessPolicyPage
+            onContinue={() => {
+              setShowAccessPolicyPage(false);
             }}
           />
         ) : (
