@@ -7,10 +7,11 @@ export interface AccessPolicyPageProps {
 
 export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
   return (
-    <div className="flex min-h-screen w-full flex-col items-center justify-start bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.24),_transparent_30%),linear-gradient(180deg,#eff5fc_0%,#dce9f9_42%,#eef4fc_100%)] overflow-y-auto px-4 py-8">
-      <div className="w-full max-w-4xl">
-        {/* Header */}
-        <div className="mb-8 text-center">
+    <div className="h-full w-full overflow-y-auto bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.24),_transparent_30%),linear-gradient(180deg,#eff5fc_0%,#dce9f9_42%,#eef4fc_100%)]">
+      <div className="flex flex-col items-center justify-start px-4 py-8">
+        <div className="w-full max-w-4xl">
+          {/* Header */}
+          <div className="mb-8 text-center">
           <img src={logo} alt="CitriCloud" className="mx-auto mb-6 h-12 w-auto" />
           <h1 className="text-4xl font-bold text-surface-900">Access & Registration Policy</h1>
           <p className="mt-3 text-lg text-surface-600">
@@ -18,8 +19,8 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
           </p>
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-2">
-          {/* Internal Users Section */}
+          <div className="grid gap-8 lg:grid-cols-2">
+            {/* Internal Users Section */}
           <div className="border border-surface-200 bg-white/90 p-8 shadow-sm">
             <div className="mb-6 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center border border-brand-200 bg-brand-50">
@@ -159,10 +160,10 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
               </p>
             </div>
           </div>
-        </div>
+          </div>
 
-        {/* Important Notice */}
-        <div className="mt-8 border border-amber-200 bg-amber-50 p-6 text-center">
+          {/* Important Notice */}
+          <div className="mt-8 border border-amber-200 bg-amber-50 p-6 text-center">
           <div className="mb-3 flex justify-center">
             <Users className="h-6 w-6 text-amber-600" />
           </div>
@@ -170,23 +171,24 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
           <p className="text-sm text-amber-800">
             If you are a CitriCloud organization member with assigned credentials, proceed to login below with your email address and password. The system will automatically detect your account configuration.
           </p>
-        </div>
+          </div>
 
-        {/* Action Button */}
-        <div className="mt-10 flex justify-center">
-          <button
-            onClick={onContinue}
-            className="flex items-center gap-3 border border-brand-600 bg-brand-600 px-8 py-4 font-semibold text-white transition-all hover:border-brand-700 hover:bg-brand-700 active:scale-95"
-          >
-            <span>I Understand, Continue to Login</span>
-            <ArrowRight className="h-5 w-5" />
-          </button>
-        </div>
+          {/* Action Button */}
+            <div className="mt-10 flex justify-center">
+            <button
+              onClick={onContinue}
+              className="flex items-center gap-3 border border-brand-600 bg-brand-600 px-8 py-4 font-semibold text-white transition-all hover:border-brand-700 hover:bg-brand-700 active:scale-95"
+            >
+              <span>I Understand, Continue to Login</span>
+              <ArrowRight className="h-5 w-5" />
+            </button>
+          </div>
 
-        {/* Footer */}
-        <p className="mt-8 text-center text-xs text-surface-500">
-          Access policies are enforced by CitriCloud administration and proxy authentication service.
-        </p>
+          {/* Footer */}
+          <p className="mt-8 text-center text-xs text-surface-500">
+            Access policies are enforced by CitriCloud administration and proxy authentication service.
+          </p>
+        </div>
       </div>
     </div>
   );
