@@ -123,12 +123,12 @@ export function AccountSetupWizard({
   };
 
   return (
-    <section className="relative overflow-hidden rounded-[32px] border border-white/60 bg-white/75 p-8 shadow-glow backdrop-blur xl:p-10">
+    <section className="relative h-full overflow-y-auto border border-surface-200 bg-white/85 p-6 shadow-glow backdrop-blur xl:p-8">
       <div className="absolute inset-x-0 top-0 h-48 bg-[radial-gradient(circle_at_top_right,_rgba(25,119,255,0.18),_transparent_55%)]" />
-      <div className="relative grid gap-8 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className="relative grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="space-y-6">
           <img src={logoUrl} alt="CitriCloud" className="h-10 w-auto" />
-          <div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-brand-700">
+          <div className="inline-flex items-center gap-2 border border-brand-200 bg-brand-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-brand-700">
             <Cable className="h-4 w-4" />
             CitriCloud Setup Wizard
           </div>
@@ -147,7 +147,7 @@ export function AccountSetupWizard({
               ["k3s-mgmt (external)", "ems.citricloud.com", "Mailcow"],
               ["Webmail", "webmail.citricloud.com", "Public CitriCloud entrypoint"]
             ].map(([title, value, detail]) => (
-              <article key={title} className="rounded-3xl border border-surface-200 bg-white/80 p-4 shadow-panel">
+              <article key={title} className="border border-surface-200 bg-white/80 p-4 shadow-panel">
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-surface-500">{title}</p>
                 <p className="mt-3 text-lg font-semibold text-surface-900">{value}</p>
                 <p className="mt-1 text-sm text-surface-600">{detail}</p>
@@ -155,7 +155,7 @@ export function AccountSetupWizard({
             ))}
           </div>
 
-          <div className="rounded-[28px] border border-surface-200 bg-white/80 p-5 shadow-panel">
+          <div className="border border-surface-200 bg-white/80 p-5 shadow-panel">
             <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.24em] text-brand-700">
               <History className="h-4 w-4" />
               Active sessions ({recentAccounts.length})
@@ -163,12 +163,12 @@ export function AccountSetupWizard({
             {recentAccounts.length ? (
               <div className="mt-4 grid gap-3">
                 {recentAccounts.map((account) => (
-                  <div key={account.session.token} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-surface-200 bg-white px-4 py-3">
+                  <div key={account.session.token} className="flex flex-wrap items-center justify-between gap-3 border border-surface-200 bg-white px-4 py-3">
                     <div>
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold text-surface-900">{account.session.email}</p>
                         {account.session.token === lastActiveToken ? (
-                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700">
+                          <span className="border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700">
                             Active
                           </span>
                         ) : null}
@@ -178,7 +178,7 @@ export function AccountSetupWizard({
                       </p>
                     </div>
                     <button
-                      className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-700"
+                      className="border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-700"
                       type="button"
                       onClick={() => onResumeAccount(account.session.token)}
                     >
@@ -193,20 +193,18 @@ export function AccountSetupWizard({
           </div>
         </div>
 
-        <div className="rounded-[28px] border border-surface-200 bg-white p-6 shadow-panel">
-          <div className="rounded-2xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-800">
-            Welcome back to CitriCloud Webmail. Sign in to continue with your mailbox operations.
-          </div>
+        <div className="border border-surface-200 bg-white p-6 shadow-panel">
 
           <div className="space-y-1">
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-brand-700">Connect mailbox</p>
             <h2 className="font-display text-2xl font-semibold text-surface-900">Server-aware account onboarding</h2>
+            <p className="pt-1 text-sm text-surface-600">Welcome back to CitriCloud Webmail. Sign in to continue with your mailbox operations.</p>
           </div>
 
           <div className="mt-6 space-y-4">
             <label className="block space-y-2">
               <span className="text-sm font-medium text-surface-700">Email address</span>
-              <div className="flex items-center gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
+              <div className="flex items-center gap-3 border border-surface-200 bg-surface-50 px-4 py-3">
                 <Mail className="h-4 w-4 text-brand-600" />
                 <input
                   className="w-full bg-transparent text-sm text-surface-900 outline-none placeholder:text-surface-400"
@@ -220,7 +218,7 @@ export function AccountSetupWizard({
 
             <label className="block space-y-2">
               <span className="text-sm font-medium text-surface-700">Password</span>
-              <div className="flex items-center gap-3 rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3">
+              <div className="flex items-center gap-3 border border-surface-200 bg-surface-50 px-4 py-3">
                 <Lock className="h-4 w-4 text-brand-600" />
                 <input
                   className="w-full bg-transparent text-sm text-surface-900 outline-none placeholder:text-surface-400"
@@ -230,7 +228,7 @@ export function AccountSetupWizard({
                   onChange={(event) => setPassword(event.target.value)}
                 />
                 <button
-                  className="rounded-lg p-1 text-surface-500 hover:bg-surface-100 hover:text-surface-700"
+                  className="border border-transparent p-1 text-surface-500 hover:border-surface-200 hover:bg-surface-100 hover:text-surface-700"
                   type="button"
                   onClick={() => setShowPassword((current) => !current)}
                   aria-label={showPassword ? "Hide password" : "Show password"}
@@ -245,7 +243,7 @@ export function AccountSetupWizard({
               <label className="block space-y-2">
                 <span className="text-sm font-medium text-surface-700">Environment preset</span>
                 <select
-                  className="w-full rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none"
+                  className="w-full border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none"
                   value={selectedPreset}
                   onChange={(event) => handlePresetChange(profilesQuery.data?.profiles ?? [], event.target.value)}
                 >
@@ -257,7 +255,7 @@ export function AccountSetupWizard({
                 </select>
               </label>
               <button
-                className="inline-flex h-[50px] items-center justify-center rounded-2xl bg-brand-600 px-5 text-sm font-medium text-white transition hover:bg-brand-700"
+                className="inline-flex h-[50px] items-center justify-center border border-brand-700 bg-brand-600 px-5 text-sm font-medium text-white transition hover:bg-brand-700"
                 type="button"
                 onClick={handleDetect}
               >
@@ -266,19 +264,19 @@ export function AccountSetupWizard({
             </div>
 
             {recommendedProfile ? (
-              <div className="rounded-2xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-800">
+              <div className="border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-800">
                 Recommended profile: <strong>{recommendedProfile.label}</strong> routed to <strong>{recommendedProfile.imap.host}</strong>
               </div>
             ) : null}
 
-            <div className="rounded-2xl border border-surface-200 bg-surface-50/80 p-4">
+            <div className="border border-surface-200 bg-surface-50/80 p-4">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-surface-600">
                 <ShieldCheck className="h-4 w-4 text-emerald-600" />
                 Preflight checks
               </div>
               <div className="mt-3 grid gap-2">
                 {readinessItems.map((item) => (
-                  <div key={item.label} className="flex items-center justify-between rounded-xl border border-surface-200 bg-white px-3 py-2 text-sm">
+                  <div key={item.label} className="flex items-center justify-between border border-surface-200 bg-white px-3 py-2 text-sm">
                     <span className="text-surface-700">{item.label}</span>
                     <span className={item.ready ? "text-emerald-700" : "text-amber-700"}>{item.ready ? "Ready" : "Missing"}</span>
                   </div>
@@ -286,7 +284,7 @@ export function AccountSetupWizard({
               </div>
             </div>
 
-            <div className="rounded-2xl border border-surface-200 bg-white p-4">
+            <div className="border border-surface-200 bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Connection summary</p>
               <div className="mt-3 grid gap-2 text-sm text-surface-700">
                 <p>
@@ -313,25 +311,25 @@ export function AccountSetupWizard({
             </button>
 
             {advancedMode ? (
-              <div className="grid gap-4 rounded-3xl border border-surface-200 bg-surface-50/80 p-4 md:grid-cols-2">
+              <div className="grid gap-4 border border-surface-200 bg-surface-50/80 p-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <p className="flex items-center gap-2 text-sm font-semibold text-surface-700">
                     <Server className="h-4 w-4 text-brand-600" />
                     IMAP
                   </p>
                   <input
-                    className="w-full rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm outline-none"
+                    className="w-full border border-surface-200 bg-white px-4 py-3 text-sm outline-none"
                     value={imap.host}
                     onChange={(event) => setImap((current) => ({ ...current, host: event.target.value }))}
                   />
                   <div className="grid grid-cols-2 gap-3">
                     <input
-                      className="rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm outline-none"
+                      className="border border-surface-200 bg-white px-4 py-3 text-sm outline-none"
                       type="number"
                       value={imap.port}
                       onChange={(event) => setImap((current) => ({ ...current, port: Number(event.target.value) }))}
                     />
-                    <label className="flex items-center justify-center gap-2 rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm text-surface-700">
+                    <label className="flex items-center justify-center gap-2 border border-surface-200 bg-white px-4 py-3 text-sm text-surface-700">
                       <input
                         checked={imap.secure}
                         type="checkbox"
@@ -347,18 +345,18 @@ export function AccountSetupWizard({
                     SMTP
                   </p>
                   <input
-                    className="w-full rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm outline-none"
+                    className="w-full border border-surface-200 bg-white px-4 py-3 text-sm outline-none"
                     value={smtp.host}
                     onChange={(event) => setSmtp((current) => ({ ...current, host: event.target.value }))}
                   />
                   <div className="grid grid-cols-2 gap-3">
                     <input
-                      className="rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm outline-none"
+                      className="border border-surface-200 bg-white px-4 py-3 text-sm outline-none"
                       type="number"
                       value={smtp.port}
                       onChange={(event) => setSmtp((current) => ({ ...current, port: Number(event.target.value) }))}
                     />
-                    <label className="flex items-center justify-center gap-2 rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm text-surface-700">
+                    <label className="flex items-center justify-center gap-2 border border-surface-200 bg-white px-4 py-3 text-sm text-surface-700">
                       <input
                         checked={smtp.secure}
                         type="checkbox"
@@ -372,7 +370,7 @@ export function AccountSetupWizard({
             ) : null}
 
             <button
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-surface-900 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-surface-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-2 border border-surface-900 bg-surface-900 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-surface-800 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={!canSubmit}
               type="button"
               onClick={() =>
