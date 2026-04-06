@@ -96,6 +96,32 @@ type LabelEditorState = {
   iconIndex: number;
 };
 
+type CategoryType = 
+  | "all" 
+  | "ops" 
+  | "billing" 
+  | "personal" 
+  | "security" 
+  | "marketing" 
+  | "social" 
+  | "support" 
+  | "newsletters" 
+  | "invoices" 
+  | "receipts" 
+  | "alerts" 
+  | "system" 
+  | "accounts" 
+  | "payments" 
+  | "shipping" 
+  | "receipts" 
+  | "confirmations" 
+  | "notifications" 
+  | "feedback" 
+  | "reports" 
+  | "meetings" 
+  | "documents" 
+  | "spam";
+
 type DashboardSettings = {
   displayName: string;
   soundEnabled: boolean;
@@ -108,7 +134,7 @@ type DashboardSettings = {
   markAsReadOnOpen: boolean;
   defaultUnreadOnly: boolean;
   defaultDateRange: "all" | "7d" | "30d";
-  defaultCategoryFilter: "all" | "ops" | "security" | "billing";
+  defaultCategoryFilter: CategoryType;
   defaultStatusFilter: "all" | "read" | "unread" | "flagged";
   autoRefreshFolders: boolean;
   folderRefreshSeconds: 30 | 60 | 120 | 300;
@@ -453,10 +479,7 @@ function readDashboardSettings(storageKey: string, email: string): DashboardSett
       markAsReadOnOpen: parsed.markAsReadOnOpen ?? fallback.markAsReadOnOpen,
       defaultUnreadOnly: parsed.defaultUnreadOnly ?? fallback.defaultUnreadOnly,
       defaultDateRange: parsed.defaultDateRange === "7d" || parsed.defaultDateRange === "30d" ? parsed.defaultDateRange : fallback.defaultDateRange,
-      defaultCategoryFilter:
-        parsed.defaultCategoryFilter === "ops" || parsed.defaultCategoryFilter === "security" || parsed.defaultCategoryFilter === "billing"
-          ? parsed.defaultCategoryFilter
-          : fallback.defaultCategoryFilter,
+      defaultCategoryFilter: isValidCategory(parsed.defaultCategoryFilter) ? parsed.defaultCategoryFilter : fallback.defaultCategoryFilter,
       defaultStatusFilter:
         parsed.defaultStatusFilter === "read" || parsed.defaultStatusFilter === "unread" || parsed.defaultStatusFilter === "flagged"
           ? parsed.defaultStatusFilter
@@ -479,6 +502,43 @@ function readDashboardSettings(storageKey: string, email: string): DashboardSett
   } catch {
     return fallback;
   }
+}
+
+function isValidCategory(value: unknown): value is CategoryType {
+  const validCategories: CategoryType[] = [
+    "all", "ops", "billing", "personal", "security", "marketing", "social", "support",
+    "newsletters", "invoices", "receipts", "alerts", "system", "accounts", "payments",
+    "shipping", "confirmations", "notifications", "feedback", "reports", "meetings",
+    "documents", "spam"
+  ];
+  return validCategories.includes(value as CategoryType);
+}
+
+function getCategoryKeywords(): Record<Exclude<CategoryType, "all">, string[]> {
+  return {
+    ops: ["ops", "operation", "outage", "incident", "oncall", "deployment", "infra", "devops", "infrastructure"],
+    billing: ["billing", "invoice", "payment", "receipt", "subscription", "charge", "card", "transaction"],
+    personal: ["personal", "friend", "family", "hi there", "check this out", "let's chat", "how are you"],
+    security: ["security", "auth", "phish", "breach", "vulnerability", "alert", "warning", "critical", "unauthorized", "verified"],
+    marketing: ["marketing", "promotion", "sale", "offer", "discount", "deal", "special", "limited time", "save now"],
+    social: ["social", "facebook", "twitter", "linkedin", "instagram", "notification", "tagged", "mentioned"],
+    support: ["support", "help", "ticket", "issue", "problem", "error", "contact support", "customer service"],
+    newsletters: ["newsletter", "weekly", "digest", "unsubscribe", "subscription", "magazine", "publication"],
+    invoices: ["invoice", "bill", "statement", "due", "amount due", "order confirmation"],
+    receipts: ["receipt", "purchase", "order", "confirmation", "receipt number", "amazon"],
+    alerts: ["alert", "warning", "notification", "verify", "confirm", "action required", "unusual activity"],
+    system: ["system", "server", "database", "backup", "maintenance", "update", "automatic", "cron"],
+    accounts: ["account", "username", "password", "login", "verify email", "confirm identity"],
+    payments: ["payment", "charge", "bill", "invoice", "refund", "credit", "debit"],
+    shipping: ["shipping", "delivery", "tracking", "package", "order shipped", "shipped"],
+    confirmations: ["confirm", "confirmation", "verify", "verified", "confirm email", "confirm account"],
+    notifications: ["notification", "notify", "reminder", "alert", "update", "news"],
+    feedback: ["feedback", "survey", "review", "rate us", "opinion", "testimonial"],
+    reports: ["report", "analytics", "summary", "insights", "statistics", "monthly"],
+    meetings: ["meeting", "calendar", "invite", "conference", "webinar", "zoom", "call"],
+    documents: ["document", "attachment", "file", "pdf", "spreadsheet", "presentation"],
+    spam: ["spam", "viagra", "casino", "lottery", "winner", "nigerian", "click here", "too good to be true"]
+  };
 }
 
 export function MailDashboard({
@@ -504,7 +564,7 @@ export function MailDashboard({
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [filterUnread, setFilterUnread] = useState(initialDashboardSettings.defaultUnreadOnly);
   const [dateRange, setDateRange] = useState<"all" | "7d" | "30d">(initialDashboardSettings.defaultDateRange);
-  const [categoryFilter, setCategoryFilter] = useState<"all" | "ops" | "security" | "billing">(initialDashboardSettings.defaultCategoryFilter);
+  const [categoryFilter, setCategoryFilter] = useState<CategoryType>(initialDashboardSettings.defaultCategoryFilter);
   const [statusFilter, setStatusFilter] = useState<"all" | "read" | "unread" | "flagged">(initialDashboardSettings.defaultStatusFilter);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
@@ -1305,11 +1365,7 @@ export function MailDashboard({
 
   const filteredMessages = useMemo(() => {
     const now = Date.now();
-    const categoryKeywords: Record<"ops" | "security" | "billing", string[]> = {
-      ops: ["ops", "operation", "outage", "incident", "oncall", "deployment", "infra"],
-      security: ["security", "auth", "phish", "breach", "vulnerability", "alert", "spam"],
-      billing: ["billing", "invoice", "payment", "receipt", "subscription", "charge"]
-    };
+    const categoryKeywords = getCategoryKeywords();
 
     return (messagesQuery.data?.messages ?? []).filter((message) => {
       if (filterUnread && !message.unread) {
@@ -2230,6 +2286,31 @@ export function MailDashboard({
             </div>
 
             <div className="flex flex-wrap items-center gap-2 border-b border-surface-200 px-3 py-2">
+              <button
+                className="rounded-xl border border-brand-200 px-2.5 py-1.5 text-xs text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+                disabled={(!selectedMessageKeys.size && selectedUid === null) || moveMutation.isPending || moveBatchMutation.isPending || !archiveFolderPath}
+                type="button"
+                onClick={() => {
+                  if (selectedMessageKeys.size) {
+                    void moveSelectedMessages("archive");
+                    return;
+                  }
+                  moveSelectedMessage(archiveFolderPath);
+                }}
+              >
+                Move
+              </button>
+              <button
+                className="rounded-xl border border-brand-200 px-2.5 py-1.5 text-xs text-brand-700 hover:bg-brand-50 disabled:opacity-50"
+                disabled={!activeSelectedMessages.length}
+                type="button"
+                onClick={() => promptAssignLabelToMessages(activeSelectedMessages)}
+              >
+                Label
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 border-b border-surface-200 px-3 py-2">
               <div className="relative">
                 <button
                   className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs ${selectionMode ? "border-brand-300 bg-brand-50 text-brand-700" : "border-brand-200 text-brand-700 hover:bg-brand-50"}`}
@@ -2274,28 +2355,6 @@ export function MailDashboard({
               >
                 Delete
               </button>
-              <button
-                className="rounded-xl border border-brand-200 px-2.5 py-1.5 text-xs text-brand-700 hover:bg-brand-50 disabled:opacity-50"
-                disabled={(!selectedMessageKeys.size && selectedUid === null) || moveMutation.isPending || moveBatchMutation.isPending || !archiveFolderPath}
-                type="button"
-                onClick={() => {
-                  if (selectedMessageKeys.size) {
-                    void moveSelectedMessages("archive");
-                    return;
-                  }
-                  moveSelectedMessage(archiveFolderPath);
-                }}
-              >
-                Move
-              </button>
-              <button
-                className="rounded-xl border border-brand-200 px-2.5 py-1.5 text-xs text-brand-700 hover:bg-brand-50 disabled:opacity-50"
-                disabled={!activeSelectedMessages.length}
-                type="button"
-                onClick={() => promptAssignLabelToMessages(activeSelectedMessages)}
-              >
-                Label
-              </button>
               {dragMoveMode ? <p className="text-xs text-brand-700">Drag selected emails to a folder in the left sidebar.</p> : null}
             </div>
 
@@ -2329,12 +2388,14 @@ export function MailDashboard({
                     <select
                       className="rounded-xl border border-brand-200 bg-white px-2.5 py-1.5 text-xs text-brand-700 outline-none"
                       value={categoryFilter}
-                      onChange={(event) => setCategoryFilter(event.target.value as "all" | "ops" | "security" | "billing")}
+                      onChange={(event) => setCategoryFilter(event.target.value as CategoryType)}
                     >
                       <option value="all">Category: All</option>
-                      <option value="ops">Category: ops</option>
-                      <option value="security">Category: security</option>
-                      <option value="billing">Category: billing</option>
+                      {(["ops", "billing", "personal", "security", "marketing", "social", "support", "newsletters", "invoices", "receipts", "alerts", "system", "accounts", "payments", "shipping", "confirmations", "notifications", "feedback", "reports", "meetings", "documents", "spam"] as const).map((category) => (
+                        <option key={category} value={category}>
+                          Category: {category}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <label className="flex flex-col gap-1">
@@ -3071,15 +3132,17 @@ export function MailDashboard({
                           className="w-full rounded-2xl border border-surface-200 bg-white px-4 py-3 text-sm text-surface-900 outline-none"
                           value={settings.defaultCategoryFilter}
                           onChange={(event) => {
-                            const value = event.target.value === "ops" || event.target.value === "security" || event.target.value === "billing" ? event.target.value : "all";
+                            const value = isValidCategory(event.target.value) ? (event.target.value as CategoryType) : "all";
                             setSettings((current) => ({ ...current, defaultCategoryFilter: value }));
                             setCategoryFilter(value);
                           }}
                         >
                           <option value="all">All categories</option>
-                          <option value="ops">Ops</option>
-                          <option value="security">Security</option>
-                          <option value="billing">Billing</option>
+                          {(["ops", "billing", "personal", "security", "marketing", "social", "support", "newsletters", "invoices", "receipts", "alerts", "system", "accounts", "payments", "shipping", "confirmations", "notifications", "feedback", "reports", "meetings", "documents", "spam"] as const).map((category) => (
+                            <option key={category} value={category}>
+                              {category.charAt(0).toUpperCase() + category.slice(1)}
+                            </option>
+                          ))}
                         </select>
                       </label>
 
