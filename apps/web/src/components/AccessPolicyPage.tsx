@@ -7,7 +7,7 @@ export interface AccessPolicyPageProps {
 
 export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
   return (
-    <div className="flex min-h-screen w-full flex-col items-center justify-center bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.24),_transparent_30%),linear-gradient(180deg,#eff5fc_0%,#dce9f9_42%,#eef4fc_100%)] px-4 py-8">
+    <div className="flex min-h-screen w-full flex-col items-center justify-start bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.24),_transparent_30%),linear-gradient(180deg,#eff5fc_0%,#dce9f9_42%,#eef4fc_100%)] overflow-y-auto px-4 py-8">
       <div className="w-full max-w-4xl">
         {/* Header */}
         <div className="mb-8 text-center">
