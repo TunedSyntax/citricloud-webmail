@@ -34,7 +34,7 @@ export function WebmailIntroPage({ onContinue }: WebmailIntroPageProps) {
               ["Step 2", "Login", "Authenticate mailbox credentials and validate routes"],
               ["Step 3", "Webmail", "Operate from folder-aware, filter-driven mailbox UI"]
             ].map(([title, value, detail]) => (
-              <article key={title} className="border border-surface-200 bg-white/80 p-4 shadow-panel">
+              <article key={title} className="border border-surface-200 bg-white p-4 shadow-panel">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-surface-500">{title}</p>
                 <p className="mt-2 text-lg font-semibold text-surface-900">{value}</p>
                 <p className="mt-1 text-sm text-surface-600">{detail}</p>
@@ -113,7 +113,7 @@ export function WebmailIntroPage({ onContinue }: WebmailIntroPageProps) {
                 Icon: Tags
               }
             ].map(({ title, detail, Icon }) => (
-              <div key={title} className="border border-surface-200 bg-surface-50/80 p-3">
+              <div key={title} className="border border-surface-200 bg-surface-50 p-3 shadow-panel">
                 <p className="flex items-center gap-2 text-sm font-semibold text-surface-900">
                   <Icon className="h-4 w-4 text-brand-700" />
                   {title}

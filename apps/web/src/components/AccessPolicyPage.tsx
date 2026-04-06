@@ -19,9 +19,9 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
           </p>
         </div>
 
-          <div className="grid gap-8 lg:grid-cols-2">
+          <div className="grid gap-6 lg:grid-cols-2">
             {/* Internal Users Section */}
-          <div className="border border-surface-200 bg-white/90 p-8 shadow-sm">
+          <div className="border border-surface-200 bg-white p-6 shadow-panel">
             <div className="mb-6 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center border border-brand-200 bg-brand-50">
                 <Lock className="h-5 w-5 text-brand-700" />
@@ -39,7 +39,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
               Only high-permission roles within the CitriCloud organization have direct access to register and use the webmail:
             </p>
 
-            <ul className="space-y-3 mb-8">
+            <ul className="mb-8 grid gap-3 sm:grid-cols-2">
               {[
                 "Developers",
                 "Administrators",
@@ -47,7 +47,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
                 "Security & Operations Teams",
                 "CTO & Platform Leadership"
               ].map((role) => (
-                <li key={role} className="flex items-start gap-3">
+                <li key={role} className="flex items-start gap-3 border border-surface-200 bg-surface-50 p-3">
                   <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-600" />
                   <span className="text-sm text-surface-700">{role}</span>
                 </li>
@@ -62,7 +62,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
           </div>
 
           {/* External Users Section */}
-          <div className="border border-surface-200 bg-white/90 p-8 shadow-sm">
+          <div className="border border-surface-200 bg-white p-6 shadow-panel">
             <div className="mb-6 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center border border-blue-200 bg-blue-50">
                 <Globe className="h-5 w-5 text-blue-700" />
@@ -80,71 +80,71 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
               External users or partners who need access must submit a request through the CitriCloud registration portal:
             </p>
 
-            <div className="space-y-4">
-              <div className="border border-surface-150 bg-surface-50 p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="border border-surface-200 bg-surface-50 p-4">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="flex h-6 w-6 items-center justify-center border border-surface-300 rounded-full bg-surface-100 text-xs font-semibold text-surface-700">
                     1
                   </span>
                   <p className="font-semibold text-surface-900">Request Form at citricloud.com</p>
                 </div>
-                <p className="ml-8 text-xs text-surface-600">
+                <p className="ml-8 text-xs leading-5 text-surface-600">
                   Fill out the registration form with your details and use case
                 </p>
               </div>
 
-              <div className="border border-surface-150 bg-surface-50 p-4">
+              <div className="border border-surface-200 bg-surface-50 p-4">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="flex h-6 w-6 items-center justify-center border border-surface-300 rounded-full bg-surface-100 text-xs font-semibold text-surface-700">
                     2
                   </span>
                   <p className="font-semibold text-surface-900">Approval & Policies</p>
                 </div>
-                <p className="ml-8 text-xs text-surface-600">
+                <p className="ml-8 text-xs leading-5 text-surface-600">
                   Review and accept all required policies and terms of service
                 </p>
               </div>
 
-              <div className="border border-surface-150 bg-surface-50 p-4">
+              <div className="border border-surface-200 bg-surface-50 p-4">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="flex h-6 w-6 items-center justify-center border border-surface-300 rounded-full bg-surface-100 text-xs font-semibold text-surface-700">
                     3
                   </span>
                   <p className="font-semibold text-surface-900">Mailbox Creation</p>
                 </div>
-                <p className="ml-8 text-xs text-surface-600">
+                <p className="ml-8 text-xs leading-5 text-surface-600">
                   Our developers review and create your mailbox if approved
                 </p>
               </div>
 
-              <div className="border border-surface-150 bg-surface-50 p-4">
+              <div className="border border-surface-200 bg-surface-50 p-4">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="flex h-6 w-6 items-center justify-center border border-surface-300 rounded-full bg-surface-100 text-xs font-semibold text-surface-700">
                     4
                   </span>
                   <p className="font-semibold text-surface-900">Temporary Password Email</p>
                 </div>
-                <p className="ml-8 text-xs text-surface-600">
+                <p className="ml-8 text-xs leading-5 text-surface-600">
                   Receive a welcome email with your temporary password
                 </p>
               </div>
 
-              <div className="border border-green-150 bg-green-50 p-4">
+              <div className="border border-green-150 bg-green-50 p-4 sm:col-span-2">
                 <div className="mb-2 flex items-center gap-2">
                   <CheckCircle2 className="h-5 w-5 text-green-600" />
                   <p className="font-semibold text-surface-900">First Login & Password Setup</p>
                 </div>
-                <p className="ml-8 text-xs text-surface-600">
+                <p className="ml-8 text-xs leading-5 text-surface-600">
                   On your first login, set your new permanent password to secure your account
                 </p>
               </div>
 
-              <div className="border border-blue-150 bg-blue-50 p-4">
+              <div className="border border-blue-150 bg-blue-50 p-4 sm:col-span-2">
                 <div className="mb-2 flex items-center gap-2">
                   <Mail className="h-5 w-5 text-blue-600" />
                   <p className="font-semibold text-surface-900">Full Access Enabled</p>
                 </div>
-                <p className="ml-8 text-xs text-surface-600">
+                <p className="ml-8 text-xs leading-5 text-surface-600">
                   Use your external email and password to access the webmail anytime (auto-detected at login)
                 </p>
               </div>

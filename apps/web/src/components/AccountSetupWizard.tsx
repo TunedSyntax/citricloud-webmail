@@ -34,12 +34,12 @@ const defaultConnection = {
 };
 
 const mobileClientApps = [
-  { name: "Gmail", mark: "G", tone: "border-red-200 bg-red-50 text-red-700" },
-  { name: "Outlook", mark: "O", tone: "border-blue-200 bg-blue-50 text-blue-700" },
-  { name: "Yahoo Mail", mark: "Y", tone: "border-violet-200 bg-violet-50 text-violet-700" },
-  { name: "BlueMail", mark: "B", tone: "border-cyan-200 bg-cyan-50 text-cyan-700" },
-  { name: "Samsung Mail", mark: "S", tone: "border-sky-200 bg-sky-50 text-sky-700" },
-  { name: "Apple Mail", mark: "A", tone: "border-slate-200 bg-slate-50 text-slate-700" }
+  { name: "Gmail", logo: "https://cdn.simpleicons.org/gmail/EA4335" },
+  { name: "Outlook", logo: "https://cdn.simpleicons.org/microsoftoutlook/0078D4" },
+  { name: "Yahoo Mail", logo: "https://cdn.simpleicons.org/yahoo/6001D2" },
+  { name: "BlueMail", logo: "https://cdn.simpleicons.org/bluemail/4D9EF7" },
+  { name: "Samsung Mail", logo: "https://cdn.simpleicons.org/samsung/1428A0" },
+  { name: "Apple Mail", logo: "https://cdn.simpleicons.org/apple/111111" }
 ] as const;
 
 function isLikelyEmail(value: string) {
@@ -172,7 +172,7 @@ export function AccountSetupWizard({
               ["k3s-mgmt (external)", "ems.citricloud.com", "Mailcow"],
               ["Webmail", "webmail.citricloud.com", "Public CitriCloud entrypoint"]
             ].map(([title, value, detail]) => (
-              <article key={title} className="border border-surface-200 bg-white/80 p-4 shadow-panel">
+              <article key={title} className="border border-surface-200 bg-white p-4 shadow-panel">
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-surface-500">{title}</p>
                 <p className="mt-3 text-lg font-semibold text-surface-900">{value}</p>
                 <p className="mt-1 text-sm text-surface-600">{detail}</p>
@@ -433,7 +433,7 @@ export function AccountSetupWizard({
 
       {showPhoneSetupModal ? (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-surface-900/45 p-4">
-          <div className="w-full max-w-2xl border border-surface-200 bg-white shadow-panel">
+          <div className="w-full max-w-2xl max-h-[88vh] overflow-y-auto border border-surface-200 bg-white shadow-panel">
             <div className="flex items-start justify-between border-b border-surface-200 p-5">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Mobile email clients</p>
@@ -453,8 +453,10 @@ export function AccountSetupWizard({
             <div className="space-y-5 p-5">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {mobileClientApps.map((app) => (
-                  <div key={app.name} className="flex items-center gap-3 border border-surface-200 bg-surface-50 px-3 py-3">
-                    <div className={`flex h-9 w-9 items-center justify-center border text-sm font-semibold ${app.tone}`}>{app.mark}</div>
+                  <div key={app.name} className="flex items-center gap-3 border border-surface-200 bg-white px-3 py-3 shadow-panel">
+                    <div className="flex h-9 w-9 items-center justify-center border border-surface-200 bg-white">
+                      <img src={app.logo} alt={`${app.name} logo`} className="h-5 w-5" loading="lazy" referrerPolicy="no-referrer" />
+                    </div>
                     <div>
                       <p className="text-sm font-semibold text-surface-900">{app.name}</p>
                       <p className="text-xs text-surface-500">IMAP / SMTP supported</p>
