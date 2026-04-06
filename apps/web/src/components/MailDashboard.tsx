@@ -1511,6 +1511,15 @@ export function MailDashboard({
     });
   }, [categoryFilter, dateRange, filterUnread, messageLabelAssignments, messagesQuery.data?.messages, searchText, selectedLabelId, statusFilter, subdomainFilter]);
 
+  const filteredMessageDateCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    filteredMessages.forEach((message) => {
+      const dateKey = formatDateGroupKey(message.date);
+      counts[dateKey] = (counts[dateKey] ?? 0) + 1;
+    });
+    return counts;
+  }, [filteredMessages]);
+
   const detail = selectedMessageQuery.data?.message;
   const switchableAccounts = savedAccounts.filter((account) => account.session.token !== session.token);
   const inboxFolderPath =
@@ -2553,13 +2562,17 @@ export function MailDashboard({
                 const currentDateGroup = formatDateGroupKey(message.date);
                 const previousDateGroup = index > 0 ? formatDateGroupKey(filteredMessages[index - 1].date) : null;
                 const showDateGroupHeader = currentDateGroup !== previousDateGroup;
+                const currentDateGroupCount = filteredMessageDateCounts[currentDateGroup] ?? 0;
                 const rowKey = toMessageKey(message.folder, message.uid);
 
                 return (
                   <Fragment key={rowKey}>
                     {showDateGroupHeader ? (
-                      <div className="border-b border-surface-200 bg-surface-100/80 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-600">
-                        ---------- {currentDateGroup} ----------
+                      <div className="border-b border-surface-200 bg-surface-100/80 px-3 py-1.5 text-[11px] font-semibold text-surface-600">
+                        <div className="flex items-center justify-between gap-2">
+                          <span>{currentDateGroup}</span>
+                          <span>({currentDateGroupCount})</span>
+                        </div>
                       </div>
                     ) : null}
                     <div
