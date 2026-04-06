@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { AccountSetupWizard } from "./components/AccountSetupWizard";
 import { MailDashboard } from "./components/MailDashboard";
+import { WebmailIntroPage } from "./components/WebmailIntroPage";
 import { getFolders, type AuthSession, type MailFolder } from "./lib/api";
 
 type AuthState = {
@@ -76,6 +77,7 @@ export default function App() {
   const [isRestoringAccount, setIsRestoringAccount] = useState(true);
   const [lastActiveToken, setLastActiveToken] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [showIntroPage, setShowIntroPage] = useState(true);
 
   useEffect(() => {
     const storedAccounts = readSavedAccounts();
@@ -181,6 +183,7 @@ export default function App() {
     writeActiveAccountToken(payload.session.token);
     setLastActiveToken(payload.session.token);
     setRestoreError(null);
+    setShowIntroPage(false);
   };
 
   const handleSignedOut = (token: string) => {
@@ -197,12 +200,15 @@ export default function App() {
     if (lastActiveToken === token) {
       setLastActiveToken(nextAccounts[0]?.session.token ?? null);
     }
+
+    setShowIntroPage(true);
   };
 
   const handleAddAccount = () => {
     writeActiveAccountToken(null);
     setAuthState(null);
     setRestoreError(null);
+    setShowIntroPage(true);
   };
 
   const isLoggedIn = Boolean(authState);
@@ -230,6 +236,12 @@ export default function App() {
             onSignedOut={handleSignedOut}
             savedAccounts={savedAccounts}
             session={authState.session}
+          />
+        ) : showIntroPage ? (
+          <WebmailIntroPage
+            onContinue={() => {
+              setShowIntroPage(false);
+            }}
           />
         ) : (
           <AccountSetupWizard
