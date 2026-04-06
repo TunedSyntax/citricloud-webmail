@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
@@ -461,6 +461,19 @@ function formatMessageListDate(dateValue: string | null | undefined, mode: "abso
     return formatter.format(Math.round(deltaMs / hourMs), "hour");
   }
   return formatter.format(Math.round(deltaMs / dayMs), "day");
+}
+
+function formatDateGroupKey(dateValue: string | null | undefined) {
+  if (!dateValue) {
+    return "Unknown date";
+  }
+
+  const parsedDate = new Date(dateValue);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "Unknown date";
+  }
+
+  return `${parsedDate.getDate()}-${parsedDate.getMonth() + 1}-${parsedDate.getFullYear()}`;
 }
 
 function readDashboardSettings(storageKey: string, email: string): DashboardSettings {
@@ -2528,7 +2541,7 @@ export function MailDashboard({
             </div>
 
             <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto hide-scrollbar" onScroll={handleListScroll}>
-              {filteredMessages.map((message) => {
+              {filteredMessages.map((message, index) => {
                 const messageLabelIds = getMessageLabelIds(message);
                 const messageLabels = messageLabelIds
                   .map((labelId) => userLabelMap.get(labelId))
@@ -2537,116 +2550,118 @@ export function MailDashboard({
                 const extraLabelCount = Math.max(0, messageLabels.length - 1);
                 const primaryLabelColor = primaryLabel ? LABEL_COLOR_PALETTE[primaryLabel.colorIndex % LABEL_COLOR_PALETTE.length] : null;
                 const PrimaryLabelIcon = primaryLabel ? LABEL_ICONS[primaryLabel.iconIndex % LABEL_ICONS.length] : null;
+                const currentDateGroup = formatDateGroupKey(message.date);
+                const previousDateGroup = index > 0 ? formatDateGroupKey(filteredMessages[index - 1].date) : null;
+                const showDateGroupHeader = currentDateGroup !== previousDateGroup;
+                const rowKey = toMessageKey(message.folder, message.uid);
 
                 return (
-                  <div
-                    key={toMessageKey(message.folder, message.uid)}
-                    className={`group flex w-full items-center gap-2 border-b border-surface-100 text-left transition hover:bg-brand-50 ${
-                      settings.compactMessageRows ? "h-[60px] px-3 py-1.5" : "h-[72px] px-3 py-2"
-                    } ${
-                      selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || isMessageSelected(message) ? "bg-brand-50" : "bg-white"
-                    }`}
-                    role="button"
-                    tabIndex={0}
-                    draggable={selectionMode && (selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || dragMoveMode)}
-                    onMouseDown={() => prefetchMessageDetail(message)}
-                    onDragStart={(event) => {
-                      if (!selectionMode) {
-                        return;
-                      }
-                      if (!selectedMessageKeys.has(toMessageKey(message.folder, message.uid))) {
-                        setSelectedMessageKeys(new Set([toMessageKey(message.folder, message.uid)]));
-                      }
-                      setDragMoveMode(true);
-                      event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData("text/plain", toMessageKey(message.folder, message.uid));
-                    }}
-                    onClick={() => {
-                      prefetchMessageDetail(message);
-                      setSelectedUid(message.uid);
-                      setSelectedMessageSourceFolder(message.folder);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
+                  <Fragment key={rowKey}>
+                    {showDateGroupHeader ? (
+                      <div className="border-b border-surface-200 bg-surface-100/80 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-600">
+                        ---------- {currentDateGroup} ----------
+                      </div>
+                    ) : null}
+                    <div
+                      className={`group flex w-full items-center gap-2 border-b border-surface-100 text-left transition hover:bg-brand-50 ${
+                        settings.compactMessageRows ? "h-[60px] px-3 py-1.5" : "h-[72px] px-3 py-2"
+                      } ${selectedMessageKeys.has(rowKey) || isMessageSelected(message) ? "bg-brand-50" : "bg-white"}`}
+                      role="button"
+                      tabIndex={0}
+                      draggable={selectionMode && (selectedMessageKeys.has(rowKey) || dragMoveMode)}
+                      onMouseDown={() => prefetchMessageDetail(message)}
+                      onDragStart={(event) => {
+                        if (!selectionMode) {
+                          return;
+                        }
+                        if (!selectedMessageKeys.has(rowKey)) {
+                          setSelectedMessageKeys(new Set([rowKey]));
+                        }
+                        setDragMoveMode(true);
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", rowKey);
+                      }}
+                      onClick={() => {
                         prefetchMessageDetail(message);
                         setSelectedUid(message.uid);
                         setSelectedMessageSourceFolder(message.folder);
-                      }
-                    }}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      if (!isListPane) {
-                        setSelectedUid(message.uid);
-                        setSelectedMessageSourceFolder(message.folder);
-                      }
-                      setContextMenu({
-                        x: event.clientX,
-                        y: event.clientY,
-                        message
-                      });
-                    }}
-                  >
-                    {selectionMode ? (
-                      <button
-                        className="rounded p-0.5"
-                        type="button"
-                        onClick={(event) => {
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
-                          event.stopPropagation();
-                          toggleMessageSelection(message);
-                        }}
-                      >
-                        {selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) ? (
-                          <CheckSquare className="h-4 w-4 text-brand-600" />
-                        ) : (
-                          <Square className="h-4 w-4 text-surface-300" />
-                        )}
-                      </button>
-                    ) : null}
-                    <div className="flex items-center gap-1">
-                      <div className={`h-2.5 w-2.5 rounded-full ${message.unread ? "bg-brand-600" : "bg-surface-200"}`} />
-                      <button
-                        className={`rounded p-0.5 transition-opacity ${message.flagged ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          event.preventDefault();
-                          updateMessageState({ folder: message.folder, uid: message.uid, flagged: !message.flagged });
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
+                          prefetchMessageDetail(message);
+                          setSelectedUid(message.uid);
+                          setSelectedMessageSourceFolder(message.folder);
+                        }
+                      }}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (!isListPane) {
+                          setSelectedUid(message.uid);
+                          setSelectedMessageSourceFolder(message.folder);
+                        }
+                        setContextMenu({
+                          x: event.clientX,
+                          y: event.clientY,
+                          message
+                        });
+                      }}
+                    >
+                      {selectionMode ? (
+                        <button
+                          className="rounded p-0.5"
+                          type="button"
+                          onClick={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
-                            updateMessageState({ folder: message.folder, uid: message.uid, flagged: !message.flagged });
-                          }
-                        }}
-                      >
-                        <Star className={`h-3.5 w-3.5 shrink-0 ${message.flagged ? "fill-amber-400 text-amber-500" : "text-surface-500"}`} />
-                      </button>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p title={message.from} className={`truncate text-xs text-surface-700 ${message.unread ? "font-medium" : "font-normal"}`}>{message.from}</p>
-                        <p className="shrink-0 text-xs text-surface-500">{formatMessageListDate(message.date, settings.listDateMode)}</p>
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-1.5">
-                        <p title={message.subject} className={`min-w-0 flex-1 truncate text-sm leading-5 text-surface-900 ${message.unread ? "font-semibold" : "font-normal"}`}>{message.subject}</p>
-                        {primaryLabel && PrimaryLabelIcon && primaryLabelColor ? (
-                          <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${primaryLabelColor.badgeClass}`}>
-                            <PrimaryLabelIcon className="h-3 w-3" />
-                            <span className="max-w-[72px] truncate">{primaryLabel.name}</span>
-                            {extraLabelCount ? <span>+{extraLabelCount}</span> : null}
-                          </span>
-                        ) : null}
-                        {message.hasAttachments ? <Paperclip className="mt-0.5 h-3 w-3 shrink-0 text-surface-500" /> : null}
-                      </div>
-                      {settings.showMessagePreview ? (
-                        <p title={message.preview} className="mt-0.5 truncate text-xs text-surface-500">{message.preview}</p>
+                            toggleMessageSelection(message);
+                          }}
+                        >
+                          {selectedMessageKeys.has(rowKey) ? <CheckSquare className="h-4 w-4 text-brand-600" /> : <Square className="h-4 w-4 text-surface-300" />}
+                        </button>
                       ) : null}
+                      <div className="flex items-center gap-1">
+                        <div className={`h-2.5 w-2.5 rounded-full ${message.unread ? "bg-brand-600" : "bg-surface-200"}`} />
+                        <button
+                          className={`rounded p-0.5 transition-opacity ${message.flagged ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            event.preventDefault();
+                            updateMessageState({ folder: message.folder, uid: message.uid, flagged: !message.flagged });
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              updateMessageState({ folder: message.folder, uid: message.uid, flagged: !message.flagged });
+                            }
+                          }}
+                        >
+                          <Star className={`h-3.5 w-3.5 shrink-0 ${message.flagged ? "fill-amber-400 text-amber-500" : "text-surface-500"}`} />
+                        </button>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p title={message.from} className={`truncate text-xs text-surface-700 ${message.unread ? "font-medium" : "font-normal"}`}>{message.from}</p>
+                          <p className="shrink-0 text-xs text-surface-500">{formatMessageListDate(message.date, settings.listDateMode)}</p>
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          <p title={message.subject} className={`min-w-0 flex-1 truncate text-sm leading-5 text-surface-900 ${message.unread ? "font-semibold" : "font-normal"}`}>{message.subject}</p>
+                          {primaryLabel && PrimaryLabelIcon && primaryLabelColor ? (
+                            <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${primaryLabelColor.badgeClass}`}>
+                              <PrimaryLabelIcon className="h-3 w-3" />
+                              <span className="max-w-[72px] truncate">{primaryLabel.name}</span>
+                              {extraLabelCount ? <span>+{extraLabelCount}</span> : null}
+                            </span>
+                          ) : null}
+                          {message.hasAttachments ? <Paperclip className="mt-0.5 h-3 w-3 shrink-0 text-surface-500" /> : null}
+                        </div>
+                        {settings.showMessagePreview ? <p title={message.preview} className="mt-0.5 truncate text-xs text-surface-500">{message.preview}</p> : null}
+                      </div>
                     </div>
-                  </div>
+                  </Fragment>
                 );
               })}
               {isLoadingMore ? (
