@@ -18,6 +18,12 @@ import {
 import { detectProfile, getProfiles, login, type AuthSession, type ConnectionProfile, type MailFolder } from "../lib/api";
 import type { SavedAccount } from "../App";
 import logoUrl from "../assets/logo.svg";
+import gmailLogo from "../assets/gmail.svg";
+import outlookLogo from "../assets/outlook-mail.svg";
+import yahooLogo from "../assets/yahoo-mail.svg";
+import bluemailLogo from "../assets/bluemail.svg";
+import samsungLogo from "../assets/samsung-mail.svg";
+import appleLogo from "../assets/apple-mail.svg";
 
 type AccountSetupWizardProps = {
   lastActiveToken: string | null;
@@ -33,13 +39,14 @@ const defaultConnection = {
   secure: true
 };
 
+// Logo URLs are resolved at build-time — bundled as static assets, no external fetching
 const mobileClientApps = [
-  { name: "Gmail", logo: "https://logo.clearbit.com/google.com", fallbackMark: "G" },
-  { name: "Outlook", logo: "https://logo.clearbit.com/outlook.com", fallbackMark: "O" },
-  { name: "Yahoo Mail", logo: "https://logo.clearbit.com/yahoo.com", fallbackMark: "Y" },
-  { name: "BlueMail", logo: "https://logo.clearbit.com/bluemail.me", fallbackMark: "B" },
-  { name: "Samsung Mail", logo: "https://logo.clearbit.com/samsung.com", fallbackMark: "S" },
-  { name: "Apple Mail", logo: "https://logo.clearbit.com/apple.com", fallbackMark: "A" }
+  { name: "Gmail", logo: gmailLogo, bg: "bg-white" },
+  { name: "Outlook", logo: outlookLogo, bg: "bg-[#0078D4]" },
+  { name: "Yahoo Mail", logo: yahooLogo, bg: "bg-[#6001D2]" },
+  { name: "BlueMail", logo: bluemailLogo, bg: "bg-white" },
+  { name: "Samsung Mail", logo: samsungLogo, bg: "bg-white" },
+  { name: "Apple Mail", logo: appleLogo, bg: "bg-white" }
 ] as const;
 
 function isLikelyEmail(value: string) {
@@ -61,7 +68,6 @@ export function AccountSetupWizard({
   const [smtp, setSmtp] = useState({ host: "", port: 587, secure: false });
   const [advancedMode, setAdvancedMode] = useState(false);
   const [showPhoneSetupModal, setShowPhoneSetupModal] = useState(false);
-  const [logoLoadErrorMap, setLogoLoadErrorMap] = useState<Record<string, boolean>>({});
   const lastDetectedEmailRef = useRef<string>("");
 
   const profilesQuery = useQuery({
@@ -455,21 +461,12 @@ export function AccountSetupWizard({
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {mobileClientApps.map((app) => (
                   <div key={app.name} className="flex items-center gap-3 rounded-xl border border-surface-200 bg-white px-3 py-3 shadow-panel">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-surface-200 bg-white">
-                      {!logoLoadErrorMap[app.name] ? (
-                        <img
-                          src={app.logo}
-                          alt={`${app.name} logo`}
-                          className="h-5 w-5"
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                          onError={() => {
-                            setLogoLoadErrorMap((current) => ({ ...current, [app.name]: true }));
-                          }}
-                        />
-                      ) : (
-                        <span className="text-xs font-semibold text-surface-600">{app.fallbackMark}</span>
-                      )}
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-lg border border-surface-200 ${app.bg}`}>
+                      <img
+                        src={app.logo}
+                        alt={`${app.name} logo`}
+                        className="h-5 w-5"
+                      />
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-surface-900">{app.name}</p>
