@@ -2680,31 +2680,34 @@ export function MailDashboard({
                 </button>
               </div>
 
-              <div className="mt-5 flex flex-wrap gap-2 border-b border-surface-200 pb-4">
-                {[
-                  ["general", "General"],
-                  ["notifications", "Notifications"],
-                  ["labels", "Labels Sync"],
-                  ["layout", "Layout"],
-                  ["messages", "Messages"],
-                  ["inbox", "Inbox"],
-                  ["data", "Data"],
-                  ["safety", "Safety"]
-                ].map(([key, label]) => (
-                  <button
-                    key={key}
-                    className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                      settingsTab === key ? "bg-brand-100 text-brand-700" : "bg-surface-100 text-surface-600 hover:bg-surface-200"
-                    }`}
-                    type="button"
-                    onClick={() => setSettingsTab(key as SettingsTab)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <div className="mt-5 grid gap-4 md:grid-cols-[190px_minmax(0,1fr)]">
+                <aside className="rounded-2xl border border-surface-200 bg-surface-50/80 p-2">
+                  <div className="grid gap-1.5">
+                    {[
+                      ["general", "General"],
+                      ["notifications", "Notifications"],
+                      ["labels", "Labels Sync"],
+                      ["layout", "Layout"],
+                      ["messages", "Messages"],
+                      ["inbox", "Inbox"],
+                      ["data", "Data"],
+                      ["safety", "Safety"]
+                    ].map(([key, label]) => (
+                      <button
+                        key={key}
+                        className={`w-full rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
+                          settingsTab === key ? "bg-brand-100 text-brand-700" : "bg-white text-surface-600 hover:bg-surface-100"
+                        }`}
+                        type="button"
+                        onClick={() => setSettingsTab(key as SettingsTab)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </aside>
 
-              <div className="mt-6 space-y-6">
+                <div className="min-w-0 space-y-6">
                 {settingsTab === "general" ? (
                   <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-surface-500">Profile</p>
@@ -3244,6 +3247,7 @@ export function MailDashboard({
                   </section>
                 ) : null}
               </div>
+            </div>
             </div>
           </div>
         </>
