@@ -113,7 +113,6 @@ type CategoryType =
   | "accounts" 
   | "payments" 
   | "shipping" 
-  | "receipts" 
   | "confirmations" 
   | "notifications" 
   | "feedback" 
@@ -386,6 +385,54 @@ function buildDefaultDisplayName(email: string) {
   return localPart.replace(/[._-]+/g, " ").trim() || email;
 }
 
+function extractSenderDomain(fromValue: string) {
+  const angleBracketMatch = fromValue.match(/<\s*([^>\s]+@[^>\s]+)\s*>/i);
+  const directMatch = fromValue.match(/([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i);
+  const address = angleBracketMatch?.[1] ?? directMatch?.[1];
+  if (!address) {
+    return null;
+  }
+
+  const atIndex = address.lastIndexOf("@");
+  if (atIndex < 0 || atIndex === address.length - 1) {
+    return null;
+  }
+
+  return address.slice(atIndex + 1).toLowerCase();
+}
+
+function getProviderFromDomain(domain: string) {
+  const segments = domain.split(".").map((segment) => segment.trim()).filter(Boolean);
+  if (!segments.length) {
+    return null;
+  }
+
+  const secondLevelTlds = new Set(["co.uk", "com.au", "co.jp", "co.in", "com.br", "com.mx", "com.tr"]);
+  const tail = segments.length >= 2 ? `${segments[segments.length - 2]}.${segments[segments.length - 1]}` : "";
+  const providerIndex = secondLevelTlds.has(tail) && segments.length >= 3 ? segments.length - 3 : Math.max(0, segments.length - 2);
+  const providerKey = segments[providerIndex] ?? segments[0];
+  const providerLabel = providerKey
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+
+  return {
+    key: providerKey,
+    label: providerLabel || providerKey,
+    domain
+  };
+}
+
+function extractSenderProvider(fromValue: string) {
+  const domain = extractSenderDomain(fromValue);
+  if (!domain) {
+    return null;
+  }
+
+  return getProviderFromDomain(domain);
+}
+
 function formatMessageListDate(dateValue: string | null | undefined, mode: "absolute" | "relative") {
   if (!dateValue) {
     return "Now";
@@ -565,6 +612,7 @@ export function MailDashboard({
   const [filterUnread, setFilterUnread] = useState(initialDashboardSettings.defaultUnreadOnly);
   const [dateRange, setDateRange] = useState<"all" | "7d" | "30d">(initialDashboardSettings.defaultDateRange);
   const [categoryFilter, setCategoryFilter] = useState<CategoryType>(initialDashboardSettings.defaultCategoryFilter);
+  const [subdomainFilter, setSubdomainFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "read" | "unread" | "flagged">(initialDashboardSettings.defaultStatusFilter);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
@@ -581,6 +629,7 @@ export function MailDashboard({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [settings, setSettings] = useState<DashboardSettings>(initialDashboardSettings);
+  const [rspamdInfoOpen, setRspamdInfoOpen] = useState(false);
   const [isSyncingLabels, setIsSyncingLabels] = useState(false);
   const [messageHeaderMenuOpen, setMessageHeaderMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: MessagePreview } | null>(null);
@@ -632,6 +681,25 @@ export function MailDashboard({
   });
 
   const availableFolders = foldersQuery.data?.folders ?? initialFolders;
+  const providerOptions = useMemo(() => {
+    const counts = new Map<string, { key: string; label: string; count: number }>();
+    (messagesQuery.data?.messages ?? []).forEach((message) => {
+      const provider = extractSenderProvider(message.from);
+      if (!provider) {
+        return;
+      }
+
+      const existing = counts.get(provider.key);
+      if (existing) {
+        existing.count += 1;
+        return;
+      }
+
+      counts.set(provider.key, { key: provider.key, label: provider.label, count: 1 });
+    });
+
+    return Array.from(counts.values()).sort((left, right) => left.label.localeCompare(right.label));
+  }, [messagesQuery.data?.messages]);
   const selectedPreview =
     (messagesQuery.data?.messages ?? []).find(
       (message) => message.uid === selectedUid && (!selectedMessageSourceFolder || message.folder === selectedMessageSourceFolder)
@@ -916,6 +984,7 @@ export function MailDashboard({
     setDragMoveMode(false);
     setSelectionMode(false);
     setSelectMenuOpen(false);
+    setSubdomainFilter("all");
     setMessageLimit(settings.messagePageSize);
     setIsLoadingMore(false);
   }, [activeFolder, settings.messagePageSize]);
@@ -927,6 +996,7 @@ export function MailDashboard({
     setDateRange(nextSettings.defaultDateRange);
     setCategoryFilter(nextSettings.defaultCategoryFilter);
     setStatusFilter(nextSettings.defaultStatusFilter);
+    setSubdomainFilter("all");
     setMessageLimit(nextSettings.messagePageSize);
   }, [dashboardSettingsStorageKey, session.email]);
 
@@ -1412,6 +1482,13 @@ export function MailDashboard({
         }
       }
 
+      if (subdomainFilter !== "all") {
+        const provider = extractSenderProvider(message.from);
+        if (!provider || provider.key !== subdomainFilter) {
+          return false;
+        }
+      }
+
       if (!searchText) {
         return true;
       }
@@ -1419,7 +1496,7 @@ export function MailDashboard({
       const haystack = `${message.subject} ${message.from} ${message.preview}`.toLowerCase();
       return haystack.includes(searchText.toLowerCase());
     });
-  }, [categoryFilter, dateRange, filterUnread, messageLabelAssignments, messagesQuery.data?.messages, searchText, selectedLabelId, statusFilter]);
+  }, [categoryFilter, dateRange, filterUnread, messageLabelAssignments, messagesQuery.data?.messages, searchText, selectedLabelId, statusFilter, subdomainFilter]);
 
   const detail = selectedMessageQuery.data?.message;
   const switchableAccounts = savedAccounts.filter((account) => account.session.token !== session.token);
@@ -1520,6 +1597,14 @@ export function MailDashboard({
     const matched = availableFolders.find((folder) => folder.path === activeFolder);
     return matched?.name ?? activeFolder;
   }, [activeFolder, availableFolders, selectedLabelId, userLabels]);
+
+  const isSpamListFolder = activeSidebarLabel === "Spam" && !selectedLabelId;
+
+  useEffect(() => {
+    if (!isSpamListFolder) {
+      setRspamdInfoOpen(false);
+    }
+  }, [isSpamListFolder]);
 
   const openNewComposer = () => {
     setComposerDraft({
@@ -2275,14 +2360,26 @@ export function MailDashboard({
                 <p className="text-xs text-surface-500">{filteredMessages.length} messages</p>
                 {selectedMessageKeys.size ? <p className="text-xs text-brand-700">{selectedMessageKeys.size} selected</p> : null}
               </div>
-              <button
-                className="inline-flex items-center rounded-xl border border-brand-200 bg-white p-2 text-brand-700 hover:bg-brand-50"
-                title="Refresh list"
-                type="button"
-                onClick={runMessagesSync}
-              >
-                <RefreshCcw className={`h-4 w-4 ${messagesQuery.isFetching ? "animate-spin" : ""}`} />
-              </button>
+              <div className="flex items-center gap-2">
+                {isSpamListFolder ? (
+                  <button
+                    className="inline-flex items-center rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-emerald-700 hover:bg-emerald-100"
+                    title="Rspamd monitored"
+                    type="button"
+                    onClick={() => setRspamdInfoOpen(true)}
+                  >
+                    <ShieldAlert className="h-4 w-4" />
+                  </button>
+                ) : null}
+                <button
+                  className="inline-flex items-center rounded-xl border border-brand-200 bg-white p-2 text-brand-700 hover:bg-brand-50"
+                  title="Refresh list"
+                  type="button"
+                  onClick={runMessagesSync}
+                >
+                  <RefreshCcw className={`h-4 w-4 ${messagesQuery.isFetching ? "animate-spin" : ""}`} />
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 border-b border-surface-200 px-3 py-2">
@@ -2370,7 +2467,7 @@ export function MailDashboard({
                 <ChevronDown className={`h-3.5 w-3.5 transition ${filtersOpen ? "rotate-180" : "rotate-0"}`} />
               </button>
               {filtersOpen ? (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <label className="flex flex-col gap-1">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-500">Date</span>
                     <select
@@ -2409,6 +2506,21 @@ export function MailDashboard({
                       <option value="read">Status: read (new)</option>
                       <option value="unread">Status: unread</option>
                       <option value="flagged">Status: flagged</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-500">Subdomain</span>
+                    <select
+                      className="rounded-xl border border-brand-200 bg-white px-2.5 py-1.5 text-xs text-brand-700 outline-none"
+                      value={subdomainFilter}
+                      onChange={(event) => setSubdomainFilter(event.target.value)}
+                    >
+                      <option value="all">Subdomain: All</option>
+                      {providerOptions.map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {option.label} ({option.count})
+                        </option>
+                      ))}
                     </select>
                   </label>
                 </div>
@@ -2754,6 +2866,42 @@ export function MailDashboard({
         </div>
       </footer>
       </section>
+
+      {rspamdInfoOpen ? (
+        <>
+          <div className="fixed inset-0 z-40 bg-surface-900/35 backdrop-blur-sm" onMouseDown={() => setRspamdInfoOpen(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-lg rounded-3xl border border-surface-200 bg-white p-6 shadow-panel"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <span className="rounded-2xl border border-emerald-200 bg-emerald-50 p-2 text-emerald-700">
+                    <ShieldAlert className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">Spam Monitoring</p>
+                    <h3 className="mt-1 text-lg font-semibold text-surface-900">Rspamd protected folder</h3>
+                  </div>
+                </div>
+                <button
+                  className="rounded-xl border border-surface-200 px-3 py-1.5 text-xs text-surface-600 hover:bg-surface-50"
+                  type="button"
+                  onClick={() => setRspamdInfoOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-2 rounded-2xl border border-surface-200 bg-surface-50/70 p-4 text-sm text-surface-700">
+                <p>This folder is monitored by rspamd signals from the mail pipeline.</p>
+                <p>Messages shown here were classified as suspicious or high-risk and should be reviewed before restoring.</p>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
 
       {settingsOpen ? (
         <>
