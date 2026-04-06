@@ -34,12 +34,12 @@ const defaultConnection = {
 };
 
 const mobileClientApps = [
-  { name: "Gmail", logo: "https://cdn.simpleicons.org/gmail/EA4335" },
-  { name: "Outlook", logo: "https://cdn.simpleicons.org/microsoftoutlook/0078D4" },
-  { name: "Yahoo Mail", logo: "https://cdn.simpleicons.org/yahoo/6001D2" },
-  { name: "BlueMail", logo: "https://cdn.simpleicons.org/bluemail/4D9EF7" },
-  { name: "Samsung Mail", logo: "https://cdn.simpleicons.org/samsung/1428A0" },
-  { name: "Apple Mail", logo: "https://cdn.simpleicons.org/apple/111111" }
+  { name: "Gmail", logo: "https://logo.clearbit.com/google.com", fallbackMark: "G" },
+  { name: "Outlook", logo: "https://logo.clearbit.com/outlook.com", fallbackMark: "O" },
+  { name: "Yahoo Mail", logo: "https://logo.clearbit.com/yahoo.com", fallbackMark: "Y" },
+  { name: "BlueMail", logo: "https://logo.clearbit.com/bluemail.me", fallbackMark: "B" },
+  { name: "Samsung Mail", logo: "https://logo.clearbit.com/samsung.com", fallbackMark: "S" },
+  { name: "Apple Mail", logo: "https://logo.clearbit.com/apple.com", fallbackMark: "A" }
 ] as const;
 
 function isLikelyEmail(value: string) {
@@ -61,6 +61,7 @@ export function AccountSetupWizard({
   const [smtp, setSmtp] = useState({ host: "", port: 587, secure: false });
   const [advancedMode, setAdvancedMode] = useState(false);
   const [showPhoneSetupModal, setShowPhoneSetupModal] = useState(false);
+  const [logoLoadErrorMap, setLogoLoadErrorMap] = useState<Record<string, boolean>>({});
   const lastDetectedEmailRef = useRef<string>("");
 
   const profilesQuery = useQuery({
@@ -433,7 +434,7 @@ export function AccountSetupWizard({
 
       {showPhoneSetupModal ? (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-surface-900/45 p-4">
-          <div className="w-full max-w-2xl max-h-[88vh] overflow-y-auto border border-surface-200 bg-white shadow-panel">
+          <div className="w-full max-w-2xl max-h-[88vh] overflow-y-auto rounded-2xl border border-surface-200 bg-white shadow-panel">
             <div className="flex items-start justify-between border-b border-surface-200 p-5">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">Mobile email clients</p>
@@ -453,9 +454,22 @@ export function AccountSetupWizard({
             <div className="space-y-5 p-5">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {mobileClientApps.map((app) => (
-                  <div key={app.name} className="flex items-center gap-3 border border-surface-200 bg-white px-3 py-3 shadow-panel">
-                    <div className="flex h-9 w-9 items-center justify-center border border-surface-200 bg-white">
-                      <img src={app.logo} alt={`${app.name} logo`} className="h-5 w-5" loading="lazy" referrerPolicy="no-referrer" />
+                  <div key={app.name} className="flex items-center gap-3 rounded-xl border border-surface-200 bg-white px-3 py-3 shadow-panel">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-surface-200 bg-white">
+                      {!logoLoadErrorMap[app.name] ? (
+                        <img
+                          src={app.logo}
+                          alt={`${app.name} logo`}
+                          className="h-5 w-5"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          onError={() => {
+                            setLogoLoadErrorMap((current) => ({ ...current, [app.name]: true }));
+                          }}
+                        />
+                      ) : (
+                        <span className="text-xs font-semibold text-surface-600">{app.fallbackMark}</span>
+                      )}
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-surface-900">{app.name}</p>

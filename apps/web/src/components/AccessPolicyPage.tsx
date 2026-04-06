@@ -21,7 +21,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
 
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Internal Users Section */}
-          <div className="border border-surface-200 bg-white p-6 shadow-panel">
+          <div className="rounded-2xl border border-surface-200 bg-white p-6 shadow-panel">
             <div className="mb-6 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center border border-brand-200 bg-brand-50">
                 <Lock className="h-5 w-5 text-brand-700" />
@@ -62,7 +62,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
           </div>
 
           {/* External Users Section */}
-          <div className="border border-surface-200 bg-white p-6 shadow-panel">
+          <div className="rounded-2xl border border-surface-200 bg-white p-6 shadow-panel">
             <div className="mb-6 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center border border-blue-200 bg-blue-50">
                 <Globe className="h-5 w-5 text-blue-700" />
