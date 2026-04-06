@@ -116,9 +116,17 @@ type DashboardSettings = {
   messageRefreshSeconds: 15 | 30 | 60 | 120;
   confirmBeforeDelete: boolean;
   confirmBeforeBulkActions: boolean;
+  theme: "light" | "dark" | "auto";
+  fontSize: "small" | "medium" | "large";
+  fontFamily: "system" | "serif" | "monospace";
+  keyboardShortcutsEnabled: boolean;
+  replyFormat: "plain" | "html";
+  emailSignature: string;
+  spamFilterLevel: "off" | "low" | "medium" | "high";
+  defaultReplyTo: string;
 };
 
-type SettingsTab = "general" | "notifications" | "labels" | "layout" | "messages" | "inbox" | "data" | "safety";
+type SettingsTab = "general" | "notifications" | "labels" | "layout" | "messages" | "inbox" | "data" | "display" | "compose" | "safety";
 
 const sidebarItems = [
   { label: "Inbox", icon: Inbox, fallback: "INBOX" },
@@ -402,7 +410,15 @@ function readDashboardSettings(storageKey: string, email: string): DashboardSett
     autoRefreshMessages: true,
     messageRefreshSeconds: 30,
     confirmBeforeDelete: false,
-    confirmBeforeBulkActions: false
+    confirmBeforeBulkActions: false,
+    theme: "auto",
+    fontSize: "medium",
+    fontFamily: "system",
+    keyboardShortcutsEnabled: true,
+    replyFormat: "html",
+    emailSignature: "",
+    spamFilterLevel: "medium",
+    defaultReplyTo: ""
   };
 
   if (typeof window === "undefined") {
@@ -420,6 +436,11 @@ function readDashboardSettings(storageKey: string, email: string): DashboardSett
     const messagePageSize = parsedPageSize === 50 || parsedPageSize === 100 ? parsedPageSize : 25;
     const folderRefreshSeconds = parsed.folderRefreshSeconds === 30 || parsed.folderRefreshSeconds === 120 || parsed.folderRefreshSeconds === 300 ? parsed.folderRefreshSeconds : 60;
     const messageRefreshSeconds = parsed.messageRefreshSeconds === 15 || parsed.messageRefreshSeconds === 60 || parsed.messageRefreshSeconds === 120 ? parsed.messageRefreshSeconds : 30;
+    const theme = parsed.theme === "dark" || parsed.theme === "light" || parsed.theme === "auto" ? parsed.theme : fallback.theme;
+    const fontSize = parsed.fontSize === "small" || parsed.fontSize === "large" ? parsed.fontSize : fallback.fontSize;
+    const fontFamily = parsed.fontFamily === "serif" || parsed.fontFamily === "monospace" ? parsed.fontFamily : fallback.fontFamily;
+    const replyFormat = parsed.replyFormat === "plain" ? "plain" : fallback.replyFormat;
+    const spamFilterLevel = parsed.spamFilterLevel === "off" || parsed.spamFilterLevel === "low" || parsed.spamFilterLevel === "high" ? parsed.spamFilterLevel : fallback.spamFilterLevel;
     return {
       displayName: typeof parsed.displayName === "string" && parsed.displayName.trim() ? parsed.displayName : fallback.displayName,
       soundEnabled: parsed.soundEnabled ?? fallback.soundEnabled,
@@ -445,7 +466,15 @@ function readDashboardSettings(storageKey: string, email: string): DashboardSett
       autoRefreshMessages: parsed.autoRefreshMessages ?? fallback.autoRefreshMessages,
       messageRefreshSeconds,
       confirmBeforeDelete: parsed.confirmBeforeDelete ?? fallback.confirmBeforeDelete,
-      confirmBeforeBulkActions: parsed.confirmBeforeBulkActions ?? fallback.confirmBeforeBulkActions
+      confirmBeforeBulkActions: parsed.confirmBeforeBulkActions ?? fallback.confirmBeforeBulkActions,
+      theme,
+      fontSize,
+      fontFamily,
+      keyboardShortcutsEnabled: parsed.keyboardShortcutsEnabled ?? fallback.keyboardShortcutsEnabled,
+      replyFormat,
+      emailSignature: typeof parsed.emailSignature === "string" ? parsed.emailSignature : fallback.emailSignature,
+      spamFilterLevel,
+      defaultReplyTo: typeof parsed.defaultReplyTo === "string" ? parsed.defaultReplyTo : fallback.defaultReplyTo
     };
   } catch {
     return fallback;
@@ -514,6 +543,14 @@ export function MailDashboard({
   useEffect(() => {
     setMessageLimit(settings.messagePageSize);
   }, [settings.messagePageSize]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(dashboardSettingsStorageKey, JSON.stringify(settings));
+  }, [settings, dashboardSettingsStorageKey]);
 
   const foldersQuery = useQuery({
     queryKey: ["folders", session.token],
@@ -2662,7 +2699,7 @@ export function MailDashboard({
           <div className="fixed inset-0 z-40 bg-surface-900/35 backdrop-blur-sm" onMouseDown={() => setSettingsOpen(false)} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div
-              className="w-full max-w-2xl rounded-[28px] border border-surface-200 bg-white p-6 shadow-panel"
+              className="w-full max-w-6xl rounded-[28px] border border-surface-200 bg-white p-6 shadow-panel"
               onMouseDown={(event) => event.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-4">
@@ -2680,8 +2717,8 @@ export function MailDashboard({
                 </button>
               </div>
 
-              <div className="mt-5 grid gap-4 md:grid-cols-[190px_minmax(0,1fr)]">
-                <aside className="rounded-2xl border border-surface-200 bg-surface-50/80 p-2">
+              <div className="mt-5 grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+                <aside className="max-h-96 overflow-y-auto rounded-2xl border border-surface-200 bg-surface-50/80 p-2">
                   <div className="grid gap-1.5">
                     {[
                       ["general", "General"],
@@ -2690,6 +2727,8 @@ export function MailDashboard({
                       ["layout", "Layout"],
                       ["messages", "Messages"],
                       ["inbox", "Inbox"],
+                      ["display", "Display"],
+                      ["compose", "Compose"],
                       ["data", "Data"],
                       ["safety", "Safety"]
                     ].map(([key, label]) => (
@@ -3239,10 +3278,195 @@ export function MailDashboard({
                           setCategoryFilter(resetSettings.defaultCategoryFilter);
                           setStatusFilter(resetSettings.defaultStatusFilter);
                           setMessageLimit(resetSettings.messagePageSize);
+                          
+                          // Reset display settings
+                          if (resetSettings.theme === "dark") {
+                            document.documentElement.classList.add("dark");
+                          } else if (resetSettings.theme === "light") {
+                            document.documentElement.classList.remove("dark");
+                          } else {
+                            if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+                              document.documentElement.classList.add("dark");
+                            } else {
+                              document.documentElement.classList.remove("dark");
+                            }
+                          }
+                          
+                          if (resetSettings.fontSize === "small") {
+                            document.documentElement.style.fontSize = "14px";
+                          } else if (resetSettings.fontSize === "large") {
+                            document.documentElement.style.fontSize = "18px";
+                          } else {
+                            document.documentElement.style.fontSize = "16px";
+                          }
                         }}
                       >
                         Reset preferences
                       </button>
+                    </div>
+                  </section>
+                ) : null}
+
+                {settingsTab === "display" ? (
+                  <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="block rounded-2xl border border-surface-200 bg-white p-4">
+                        <span className="mb-2 block text-sm font-medium text-surface-700">Theme</span>
+                        <select
+                          className="w-full rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none"
+                          value={settings.theme}
+                          onChange={(event) => {
+                            const theme = event.target.value === "dark" || event.target.value === "light" ? event.target.value : "auto";
+                            setSettings((current) => ({ ...current, theme }));
+                            if (theme === "dark") {
+                              document.documentElement.classList.add("dark");
+                            } else if (theme === "light") {
+                              document.documentElement.classList.remove("dark");
+                            } else {
+                              if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+                                document.documentElement.classList.add("dark");
+                              } else {
+                                document.documentElement.classList.remove("dark");
+                              }
+                            }
+                          }}
+                        >
+                          <option value="light">Light</option>
+                          <option value="dark">Dark</option>
+                          <option value="auto">Auto (system)</option>
+                        </select>
+                      </label>
+
+                      <label className="block rounded-2xl border border-surface-200 bg-white p-4">
+                        <span className="mb-2 block text-sm font-medium text-surface-700">Font size</span>
+                        <select
+                          className="w-full rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none"
+                          value={settings.fontSize}
+                          onChange={(event) => {
+                            const size = event.target.value === "small" || event.target.value === "large" ? event.target.value : "medium";
+                            setSettings((current) => ({ ...current, fontSize: size }));
+                            if (size === "small") {
+                              document.documentElement.style.fontSize = "14px";
+                            } else if (size === "large") {
+                              document.documentElement.style.fontSize = "18px";
+                            } else {
+                              document.documentElement.style.fontSize = "16px";
+                            }
+                          }}
+                        >
+                          <option value="small">Small (14px)</option>
+                          <option value="medium">Medium (16px)</option>
+                          <option value="large">Large (18px)</option>
+                        </select>
+                      </label>
+
+                      <label className="block rounded-2xl border border-surface-200 bg-white p-4">
+                        <span className="mb-2 block text-sm font-medium text-surface-700">Font family</span>
+                        <select
+                          className="w-full rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none"
+                          value={settings.fontFamily}
+                          onChange={(event) => {
+                            const family = event.target.value === "serif" || event.target.value === "monospace" ? event.target.value : "system";
+                            setSettings((current) => ({ ...current, fontFamily: family }));
+                            if (family === "serif") {
+                              document.body.style.fontFamily = "Georgia, serif";
+                            } else if (family === "monospace") {
+                              document.body.style.fontFamily = "Fira Code, monospace";
+                            } else {
+                              document.body.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto";
+                            }
+                          }}
+                        >
+                          <option value="system">System</option>
+                          <option value="serif">Serif</option>
+                          <option value="monospace">Monospace</option>
+                        </select>
+                      </label>
+
+                      <div className="flex items-center justify-between rounded-2xl border border-surface-200 bg-white p-4">
+                        <div>
+                          <p className="text-sm font-medium text-surface-800">Keyboard shortcuts</p>
+                          <p className="text-xs text-surface-500">Enable keyboard navigation in message list and composer.</p>
+                        </div>
+                        <button
+                          className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.keyboardShortcutsEnabled ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
+                          type="button"
+                          onClick={() => setSettings((current) => ({ ...current, keyboardShortcutsEnabled: !current.keyboardShortcutsEnabled }))}
+                        >
+                          {settings.keyboardShortcutsEnabled ? "Enabled" : "Disabled"}
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+                ) : null}
+
+                {settingsTab === "compose" ? (
+                  <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+                    <div className="grid gap-4">
+                      <label className="block rounded-2xl border border-surface-200 bg-white p-4">
+                        <span className="mb-2 block text-sm font-medium text-surface-700">Reply format</span>
+                        <select
+                          className="w-full rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none"
+                          value={settings.replyFormat}
+                          onChange={(event) => {
+                            const format = event.target.value === "plain" ? "plain" : "html";
+                            setSettings((current) => ({ ...current, replyFormat: format }));
+                          }}
+                        >
+                          <option value="html">HTML (rich text)</option>
+                          <option value="plain">Plain text</option>
+                        </select>
+                      </label>
+
+                      <label className="block rounded-2xl border border-surface-200 bg-white p-4">
+                        <span className="mb-2 block text-sm font-medium text-surface-700">Spam filter level</span>
+                        <select
+                          className="w-full rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none"
+                          value={settings.spamFilterLevel}
+                          onChange={(event) => {
+                            const level = (event.target.value === "off" || event.target.value === "low" || event.target.value === "high") ? event.target.value : "medium";
+                            setSettings((current) => ({ ...current, spamFilterLevel: level }));
+                          }}
+                        >
+                          <option value="off">Off</option>
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                        </select>
+                      </label>
+
+                      <label className="block rounded-2xl border border-surface-200 bg-white p-4">
+                        <span className="mb-2 block text-sm font-medium text-surface-700">Default reply-to email</span>
+                        <input
+                          className="w-full rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none transition focus:border-brand-300"
+                          type="email"
+                          value={settings.defaultReplyTo}
+                          onChange={(event) =>
+                            setSettings((current) => ({
+                              ...current,
+                              defaultReplyTo: event.target.value
+                            }))
+                          }
+                          placeholder="Optional: alternate reply-to email"
+                        />
+                        <p className="mt-1 text-xs text-surface-500">Leave blank to use your account email.</p>
+                      </label>
+
+                      <label className="block rounded-2xl border border-surface-200 bg-white p-4">
+                        <span className="mb-2 block text-sm font-medium text-surface-700">Email signature</span>
+                        <textarea
+                          className="w-full rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none transition focus:border-brand-300"
+                          rows={5}
+                          value={settings.emailSignature}
+                          onChange={(event) =>
+                            setSettings((current) => ({
+                              ...current,
+                              emailSignature: event.target.value
+                            }))
+                          }
+                          placeholder="Your signature will be appended to new messages and replies"
+                        />
+                      </label>
                     </div>
                   </section>
                 ) : null}
