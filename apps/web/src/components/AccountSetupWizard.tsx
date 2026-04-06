@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowRight, Cable, History, Lock, Mail, Server } from "lucide-react";
+import { ArrowRight, Cable, CheckCircle2, Eye, EyeOff, History, Lock, Mail, Server, ShieldCheck } from "lucide-react";
 
 import { detectProfile, getProfiles, login, type AuthSession, type ConnectionProfile, type MailFolder } from "../lib/api";
 import type { SavedAccount } from "../App";
@@ -20,6 +20,10 @@ const defaultConnection = {
   secure: true
 };
 
+function isLikelyEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 export function AccountSetupWizard({
   lastActiveToken,
   onAuthenticated,
@@ -27,8 +31,9 @@ export function AccountSetupWizard({
   recentAccounts,
   restoreError
 }: AccountSetupWizardProps) {
-  const [email, setEmail] = useState("ops@citricloud.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState<string | undefined>();
   const [imap, setImap] = useState(defaultConnection);
   const [smtp, setSmtp] = useState({ host: "", port: 587, secure: false });
@@ -66,6 +71,18 @@ export function AccountSetupWizard({
   }, [profilesQuery.data, selectedPreset]);
 
   const recommendedProfile = detectMutation.data?.profile;
+  const trimmedEmail = email.trim();
+  const hasValidEmail = isLikelyEmail(trimmedEmail);
+  const hasStrongEnoughPassword = password.length >= 8;
+  const hasPreset = Boolean(selectedPreset);
+  const hasCompleteHosts = Boolean(imap.host.trim()) && Boolean(smtp.host.trim());
+  const canSubmit = hasValidEmail && hasStrongEnoughPassword && hasPreset && hasCompleteHosts && !loginMutation.isPending;
+  const readinessItems = [
+    { label: "Valid mailbox email", ready: hasValidEmail },
+    { label: "Password length (8+)", ready: hasStrongEnoughPassword },
+    { label: "Environment profile selected", ready: hasPreset },
+    { label: "IMAP/SMTP hosts resolved", ready: hasCompleteHosts }
+  ];
 
   const handleDetect = () => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -207,12 +224,21 @@ export function AccountSetupWizard({
                 <Lock className="h-4 w-4 text-brand-600" />
                 <input
                   className="w-full bg-transparent text-sm text-surface-900 outline-none placeholder:text-surface-400"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   placeholder="Mailbox password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                 />
+                <button
+                  className="rounded-lg p-1 text-surface-500 hover:bg-surface-100 hover:text-surface-700"
+                  type="button"
+                  onClick={() => setShowPassword((current) => !current)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
+              <p className="text-xs text-surface-500">Use your mailbox password. Your credentials are only used for IMAP/SMTP sign-in.</p>
             </label>
 
             <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
@@ -244,6 +270,39 @@ export function AccountSetupWizard({
                 Recommended profile: <strong>{recommendedProfile.label}</strong> routed to <strong>{recommendedProfile.imap.host}</strong>
               </div>
             ) : null}
+
+            <div className="rounded-2xl border border-surface-200 bg-surface-50/80 p-4">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-surface-600">
+                <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                Preflight checks
+              </div>
+              <div className="mt-3 grid gap-2">
+                {readinessItems.map((item) => (
+                  <div key={item.label} className="flex items-center justify-between rounded-xl border border-surface-200 bg-white px-3 py-2 text-sm">
+                    <span className="text-surface-700">{item.label}</span>
+                    <span className={item.ready ? "text-emerald-700" : "text-amber-700"}>{item.ready ? "Ready" : "Missing"}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-surface-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Connection summary</p>
+              <div className="mt-3 grid gap-2 text-sm text-surface-700">
+                <p>
+                  <strong>Email:</strong> {trimmedEmail || "Not provided"}
+                </p>
+                <p>
+                  <strong>Preset:</strong> {selectedPreset ?? "Not selected"}
+                </p>
+                <p>
+                  <strong>IMAP:</strong> {imap.host || "-"}:{imap.port} {imap.secure ? "(TLS)" : "(Plain)"}
+                </p>
+                <p>
+                  <strong>SMTP:</strong> {smtp.host || "-"}:{smtp.port} {smtp.secure ? "(TLS)" : "(Plain)"}
+                </p>
+              </div>
+            </div>
 
             <button
               className="text-sm font-medium text-brand-700"
@@ -314,7 +373,7 @@ export function AccountSetupWizard({
 
             <button
               className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-surface-900 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-surface-800 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={loginMutation.isPending || !email || !password}
+              disabled={!canSubmit}
               type="button"
               onClick={() =>
                 loginMutation.mutate({
@@ -329,6 +388,9 @@ export function AccountSetupWizard({
               Validate and enter dashboard
               <ArrowRight className="h-4 w-4" />
             </button>
+
+            {!hasValidEmail && trimmedEmail ? <p className="text-sm text-amber-700">Enter a valid email format (example: name@domain.com).</p> : null}
+            {!hasStrongEnoughPassword && password ? <p className="text-sm text-amber-700">Password should contain at least 8 characters.</p> : null}
 
             {loginMutation.error ? <p className="text-sm text-rose-600">{loginMutation.error.message}</p> : null}
             {detectMutation.error ? <p className="text-sm text-rose-600">{detectMutation.error.message}</p> : null}
