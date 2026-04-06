@@ -29,7 +29,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
               <h2 className="text-2xl font-bold text-surface-900">Internal Access</h2>
             </div>
 
-            <div className="mb-6 border-l-4 border-brand-200 bg-brand-50 p-4">
+            <div className="mb-6 rounded-xl border-l-4 border-brand-200 bg-brand-50 p-4">
               <p className="text-sm font-semibold text-brand-700 uppercase tracking-wide">
                 ✓ Authorized Roles
               </p>
@@ -47,7 +47,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
                 "Security & Operations Teams",
                 "CTO & Platform Leadership"
               ].map((role) => (
-                <li key={role} className="flex items-start gap-3 border border-surface-200 bg-surface-50 p-3">
+                <li key={role} className="flex items-start gap-3 rounded-xl border border-surface-200 bg-surface-50 p-3">
                   <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-600" />
                   <span className="text-sm text-surface-700">{role}</span>
                 </li>
@@ -70,7 +70,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
               <h2 className="text-2xl font-bold text-surface-900">External Access</h2>
             </div>
 
-            <div className="mb-6 border-l-4 border-blue-200 bg-blue-50 p-4">
+            <div className="mb-6 rounded-xl border-l-4 border-blue-200 bg-blue-50 p-4">
               <p className="text-sm font-semibold text-blue-700 uppercase tracking-wide">
                 ℹ Request Required
               </p>
@@ -81,7 +81,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
             </p>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="border border-surface-200 bg-surface-50 p-4">
+              <div className="rounded-xl border border-surface-200 bg-surface-50 p-4">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="flex h-6 w-6 items-center justify-center border border-surface-300 rounded-full bg-surface-100 text-xs font-semibold text-surface-700">
                     1
@@ -93,7 +93,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
                 </p>
               </div>
 
-              <div className="border border-surface-200 bg-surface-50 p-4">
+              <div className="rounded-xl border border-surface-200 bg-surface-50 p-4">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="flex h-6 w-6 items-center justify-center border border-surface-300 rounded-full bg-surface-100 text-xs font-semibold text-surface-700">
                     2
@@ -105,7 +105,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
                 </p>
               </div>
 
-              <div className="border border-surface-200 bg-surface-50 p-4">
+              <div className="rounded-xl border border-surface-200 bg-surface-50 p-4">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="flex h-6 w-6 items-center justify-center border border-surface-300 rounded-full bg-surface-100 text-xs font-semibold text-surface-700">
                     3
@@ -117,7 +117,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
                 </p>
               </div>
 
-              <div className="border border-surface-200 bg-surface-50 p-4">
+              <div className="rounded-xl border border-surface-200 bg-surface-50 p-4">
                 <div className="mb-2 flex items-center gap-2">
                   <span className="flex h-6 w-6 items-center justify-center border border-surface-300 rounded-full bg-surface-100 text-xs font-semibold text-surface-700">
                     4
@@ -129,7 +129,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
                 </p>
               </div>
 
-              <div className="border border-green-150 bg-green-50 p-4 sm:col-span-2">
+              <div className="rounded-xl border border-green-150 bg-green-50 p-4 sm:col-span-2">
                 <div className="mb-2 flex items-center gap-2">
                   <CheckCircle2 className="h-5 w-5 text-green-600" />
                   <p className="font-semibold text-surface-900">First Login & Password Setup</p>
@@ -139,7 +139,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
                 </p>
               </div>
 
-              <div className="border border-blue-150 bg-blue-50 p-4 sm:col-span-2">
+              <div className="rounded-xl border border-blue-150 bg-blue-50 p-4 sm:col-span-2">
                 <div className="mb-2 flex items-center gap-2">
                   <Mail className="h-5 w-5 text-blue-600" />
                   <p className="font-semibold text-surface-900">Full Access Enabled</p>
@@ -163,7 +163,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
           </div>
 
           {/* Important Notice */}
-          <div className="mt-8 border border-amber-200 bg-amber-50 p-6 text-center">
+          <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center shadow-panel">
           <div className="mb-3 flex justify-center">
             <Users className="h-6 w-6 text-amber-600" />
           </div>
@@ -177,7 +177,7 @@ export function AccessPolicyPage({ onContinue }: AccessPolicyPageProps) {
             <div className="mt-10 flex justify-center">
             <button
               onClick={onContinue}
-              className="flex items-center gap-3 border border-brand-600 bg-brand-600 px-8 py-4 font-semibold text-white transition-all hover:border-brand-700 hover:bg-brand-700 active:scale-95"
+              className="flex items-center gap-3 rounded-xl border border-brand-600 bg-brand-600 px-8 py-4 font-semibold text-white transition-all hover:border-brand-700 hover:bg-brand-700 active:scale-95"
             >
               <span>I Understand, Continue to Login</span>
               <ArrowRight className="h-5 w-5" />
