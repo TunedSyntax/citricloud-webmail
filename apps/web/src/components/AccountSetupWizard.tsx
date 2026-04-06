@@ -154,7 +154,7 @@ export function AccountSetupWizard({
       <div className="relative grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="space-y-6">
           <img src={logoUrl} alt="CitriCloud" className="h-10 w-auto" />
-          <div className="inline-flex items-center gap-2 border border-brand-200 bg-brand-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-brand-700">
+          <div className="inline-flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-brand-700">
             <Cable className="h-4 w-4" />
             CitriCloud Setup Wizard
           </div>
@@ -173,7 +173,7 @@ export function AccountSetupWizard({
               ["k3s-mgmt (external)", "ems.citricloud.com", "Mailcow"],
               ["Webmail", "webmail.citricloud.com", "Public CitriCloud entrypoint"]
             ].map(([title, value, detail]) => (
-              <article key={title} className="border border-surface-200 bg-white p-4 shadow-panel">
+              <article key={title} className="rounded-2xl border border-surface-200 bg-white p-4 shadow-panel">
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-surface-500">{title}</p>
                 <p className="mt-3 text-lg font-semibold text-surface-900">{value}</p>
                 <p className="mt-1 text-sm text-surface-600">{detail}</p>
@@ -181,7 +181,7 @@ export function AccountSetupWizard({
             ))}
           </div>
 
-          <div className="border border-surface-200 bg-white/80 p-5 shadow-panel">
+          <div className="rounded-2xl border border-surface-200 bg-white/80 p-5 shadow-panel">
             <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.24em] text-brand-700">
               <History className="h-4 w-4" />
               Active sessions ({recentAccounts.length})
@@ -189,7 +189,7 @@ export function AccountSetupWizard({
             {recentAccounts.length ? (
               <div className="mt-4 grid gap-3">
                 {recentAccounts.map((account) => (
-                  <div key={account.session.token} className="flex flex-wrap items-center justify-between gap-3 border border-surface-200 bg-white px-4 py-3">
+                  <div key={account.session.token} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3">
                     <div>
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold text-surface-900">{account.session.email}</p>
@@ -204,7 +204,7 @@ export function AccountSetupWizard({
                       </p>
                     </div>
                     <button
-                      className="border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-700"
+                      className="rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-700"
                       type="button"
                       onClick={() => onResumeAccount(account.session.token)}
                     >
@@ -219,7 +219,7 @@ export function AccountSetupWizard({
           </div>
         </div>
 
-        <div className="border border-surface-200 bg-white p-6 shadow-panel">
+        <div className="rounded-2xl border border-surface-200 bg-white p-6 shadow-panel">
 
           <div className="space-y-1">
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-brand-700">Connect mailbox</p>
@@ -295,14 +295,14 @@ export function AccountSetupWizard({
               </div>
             ) : null}
 
-            <div className="border border-surface-200 bg-surface-50/80 p-4">
+            <div className="rounded-xl border border-surface-200 bg-surface-50/80 p-4">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-surface-600">
                 <ShieldCheck className="h-4 w-4 text-emerald-600" />
                 Preflight checks
               </div>
               <div className="mt-3 grid gap-2">
                 {readinessItems.map((item) => (
-                  <div key={item.label} className="flex items-center justify-between border border-surface-200 bg-white px-3 py-2 text-sm">
+                  <div key={item.label} className="flex items-center justify-between rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm">
                     <span className="text-surface-700">{item.label}</span>
                     <span className={item.ready ? "text-emerald-700" : "text-amber-700"}>{item.ready ? "Ready" : "Missing"}</span>
                   </div>
@@ -310,7 +310,7 @@ export function AccountSetupWizard({
               </div>
             </div>
 
-            <div className="border border-surface-200 bg-white p-4">
+            <div className="rounded-xl border border-surface-200 bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-500">Connection summary</p>
               <div className="mt-3 grid gap-2 text-sm text-surface-700">
                 <p>
@@ -329,7 +329,7 @@ export function AccountSetupWizard({
             </div>
 
             <button
-              className="inline-flex w-full items-center justify-center gap-2 border border-brand-200 bg-brand-50 px-5 py-3 text-sm font-semibold text-brand-700 transition hover:border-brand-300 hover:bg-brand-100"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-5 py-3 text-sm font-semibold text-brand-700 transition hover:border-brand-300 hover:bg-brand-100"
               type="button"
               onClick={() => setShowPhoneSetupModal(true)}
             >
@@ -405,7 +405,7 @@ export function AccountSetupWizard({
             ) : null}
 
             <button
-              className="inline-flex w-full items-center justify-center gap-2 border border-surface-900 bg-surface-900 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-surface-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-surface-900 bg-surface-900 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-surface-800 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={!canSubmit}
               type="button"
               onClick={() =>
