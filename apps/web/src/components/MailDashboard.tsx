@@ -102,6 +102,10 @@ type DashboardSettings = {
   syncLabelsEnabled: boolean;
   autoOpenFirstMessage: boolean;
   messagePageSize: 25 | 50 | 100;
+  compactMessageRows: boolean;
+  showMessagePreview: boolean;
+  listDateMode: "absolute" | "relative";
+  markAsReadOnOpen: boolean;
   defaultUnreadOnly: boolean;
   defaultDateRange: "all" | "7d" | "30d";
   defaultCategoryFilter: "all" | "ops" | "security" | "billing";
@@ -110,9 +114,11 @@ type DashboardSettings = {
   folderRefreshSeconds: 30 | 60 | 120 | 300;
   autoRefreshMessages: boolean;
   messageRefreshSeconds: 15 | 30 | 60 | 120;
+  confirmBeforeDelete: boolean;
+  confirmBeforeBulkActions: boolean;
 };
 
-type SettingsTab = "general" | "notifications" | "labels" | "layout" | "inbox" | "data";
+type SettingsTab = "general" | "notifications" | "labels" | "layout" | "messages" | "inbox" | "data" | "safety";
 
 const sidebarItems = [
   { label: "Inbox", icon: Inbox, fallback: "INBOX" },
@@ -346,6 +352,36 @@ function buildDefaultDisplayName(email: string) {
   return localPart.replace(/[._-]+/g, " ").trim() || email;
 }
 
+function formatMessageListDate(dateValue: string | null | undefined, mode: "absolute" | "relative") {
+  if (!dateValue) {
+    return "Now";
+  }
+
+  const parsedDate = new Date(dateValue);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "Now";
+  }
+
+  if (mode === "absolute") {
+    return parsedDate.toLocaleDateString();
+  }
+
+  const deltaMs = parsedDate.getTime() - Date.now();
+  const absDeltaMs = Math.abs(deltaMs);
+  const minuteMs = 60 * 1000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
+  if (absDeltaMs < hourMs) {
+    return formatter.format(Math.round(deltaMs / minuteMs), "minute");
+  }
+  if (absDeltaMs < dayMs) {
+    return formatter.format(Math.round(deltaMs / hourMs), "hour");
+  }
+  return formatter.format(Math.round(deltaMs / dayMs), "day");
+}
+
 function readDashboardSettings(storageKey: string, email: string): DashboardSettings {
   const fallback: DashboardSettings = {
     displayName: buildDefaultDisplayName(email),
@@ -353,6 +389,10 @@ function readDashboardSettings(storageKey: string, email: string): DashboardSett
     syncLabelsEnabled: true,
     autoOpenFirstMessage: true,
     messagePageSize: 25,
+    compactMessageRows: false,
+    showMessagePreview: true,
+    listDateMode: "absolute",
+    markAsReadOnOpen: true,
     defaultUnreadOnly: false,
     defaultDateRange: "all",
     defaultCategoryFilter: "all",
@@ -360,7 +400,9 @@ function readDashboardSettings(storageKey: string, email: string): DashboardSett
     autoRefreshFolders: true,
     folderRefreshSeconds: 60,
     autoRefreshMessages: true,
-    messageRefreshSeconds: 30
+    messageRefreshSeconds: 30,
+    confirmBeforeDelete: false,
+    confirmBeforeBulkActions: false
   };
 
   if (typeof window === "undefined") {
@@ -384,6 +426,10 @@ function readDashboardSettings(storageKey: string, email: string): DashboardSett
       syncLabelsEnabled: parsed.syncLabelsEnabled ?? fallback.syncLabelsEnabled,
       autoOpenFirstMessage: parsed.autoOpenFirstMessage ?? fallback.autoOpenFirstMessage,
       messagePageSize,
+      compactMessageRows: parsed.compactMessageRows ?? fallback.compactMessageRows,
+      showMessagePreview: parsed.showMessagePreview ?? fallback.showMessagePreview,
+      listDateMode: parsed.listDateMode === "relative" ? "relative" : fallback.listDateMode,
+      markAsReadOnOpen: parsed.markAsReadOnOpen ?? fallback.markAsReadOnOpen,
       defaultUnreadOnly: parsed.defaultUnreadOnly ?? fallback.defaultUnreadOnly,
       defaultDateRange: parsed.defaultDateRange === "7d" || parsed.defaultDateRange === "30d" ? parsed.defaultDateRange : fallback.defaultDateRange,
       defaultCategoryFilter:
@@ -397,7 +443,9 @@ function readDashboardSettings(storageKey: string, email: string): DashboardSett
       autoRefreshFolders: parsed.autoRefreshFolders ?? fallback.autoRefreshFolders,
       folderRefreshSeconds,
       autoRefreshMessages: parsed.autoRefreshMessages ?? fallback.autoRefreshMessages,
-      messageRefreshSeconds
+      messageRefreshSeconds,
+      confirmBeforeDelete: parsed.confirmBeforeDelete ?? fallback.confirmBeforeDelete,
+      confirmBeforeBulkActions: parsed.confirmBeforeBulkActions ?? fallback.confirmBeforeBulkActions
     };
   } catch {
     return fallback;
@@ -721,6 +769,18 @@ export function MailDashboard({
 
     setSelectedMessageSourceFolder(selectedPreview.folder);
   }, [selectedPreview]);
+
+  useEffect(() => {
+    if (!settings.markAsReadOnOpen || !selectedUid || !selectedMessageQuery.data?.message.unread) {
+      return;
+    }
+
+    updateMessageState({
+      folder: selectedMessageFolder,
+      uid: selectedUid,
+      unread: false
+    });
+  }, [selectedMessageFolder, selectedMessageQuery.data?.message.unread, selectedUid, settings.markAsReadOnOpen]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1497,6 +1557,13 @@ export function MailDashboard({
       return;
     }
 
+    if (settings.confirmBeforeBulkActions) {
+      const operationLabel = target === "starred" ? "flag" : `move to ${target}`;
+      if (!window.confirm(`Apply bulk action to ${activeSelectedMessages.length} messages: ${operationLabel}?`)) {
+        return;
+      }
+    }
+
     if (target === "starred") {
       await Promise.all(
         activeSelectedMessages.map((message) => updateFlagsMutation.mutateAsync({ folder: message.folder, uid: message.uid, flagged: true }))
@@ -1519,6 +1586,12 @@ export function MailDashboard({
   const deleteSelectedMessages = async () => {
     if (!activeSelectedMessages.length) {
       return;
+    }
+
+    if (settings.confirmBeforeDelete) {
+      if (!window.confirm(`Delete ${activeSelectedMessages.length} selected messages?`)) {
+        return;
+      }
     }
 
     if (trashFolderPath) {
@@ -1597,6 +1670,12 @@ export function MailDashboard({
 
     if (!targetUid) {
       return;
+    }
+
+    if (settings.confirmBeforeDelete) {
+      if (!window.confirm("Delete this message?")) {
+        return;
+      }
     }
 
     if (trashFolderPath && sourceFolder !== trashFolderPath) {
@@ -2252,7 +2331,9 @@ export function MailDashboard({
                 return (
                   <div
                     key={toMessageKey(message.folder, message.uid)}
-                    className={`group flex h-[72px] w-full items-center gap-2 border-b border-surface-100 px-3 py-2 text-left transition hover:bg-brand-50 ${
+                    className={`group flex w-full items-center gap-2 border-b border-surface-100 text-left transition hover:bg-brand-50 ${
+                      settings.compactMessageRows ? "h-[60px] px-3 py-1.5" : "h-[72px] px-3 py-2"
+                    } ${
                       selectedMessageKeys.has(toMessageKey(message.folder, message.uid)) || isMessageSelected(message) ? "bg-brand-50" : "bg-white"
                     }`}
                     role="button"
@@ -2338,7 +2419,7 @@ export function MailDashboard({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <p title={message.from} className={`truncate text-xs text-surface-700 ${message.unread ? "font-medium" : "font-normal"}`}>{message.from}</p>
-                        <p className="shrink-0 text-xs text-surface-500">{message.date ? new Date(message.date).toLocaleDateString() : "Now"}</p>
+                        <p className="shrink-0 text-xs text-surface-500">{formatMessageListDate(message.date, settings.listDateMode)}</p>
                       </div>
                       <div className="mt-0.5 flex items-center gap-1.5">
                         <p title={message.subject} className={`min-w-0 flex-1 truncate text-sm leading-5 text-surface-900 ${message.unread ? "font-semibold" : "font-normal"}`}>{message.subject}</p>
@@ -2351,6 +2432,9 @@ export function MailDashboard({
                         ) : null}
                         {message.hasAttachments ? <Paperclip className="mt-0.5 h-3 w-3 shrink-0 text-surface-500" /> : null}
                       </div>
+                      {settings.showMessagePreview ? (
+                        <p title={message.preview} className="mt-0.5 truncate text-xs text-surface-500">{message.preview}</p>
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -2602,8 +2686,10 @@ export function MailDashboard({
                   ["notifications", "Notifications"],
                   ["labels", "Labels Sync"],
                   ["layout", "Layout"],
+                  ["messages", "Messages"],
                   ["inbox", "Inbox"],
-                  ["data", "Data"]
+                  ["data", "Data"],
+                  ["safety", "Safety"]
                 ].map(([key, label]) => (
                   <button
                     key={key}
@@ -2802,6 +2888,77 @@ export function MailDashboard({
                       >
                         Reset layout defaults
                       </button>
+                    </div>
+                  </section>
+                ) : null}
+
+                {settingsTab === "messages" ? (
+                  <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-surface-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-surface-800">Message row density</p>
+                            <p className="text-xs text-surface-500">Compact mode shows more rows in the list pane.</p>
+                          </div>
+                          <button
+                            className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.compactMessageRows ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
+                            type="button"
+                            onClick={() => setSettings((current) => ({ ...current, compactMessageRows: !current.compactMessageRows }))}
+                          >
+                            {settings.compactMessageRows ? "Compact" : "Comfortable"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-surface-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-surface-800">Preview snippet line</p>
+                            <p className="text-xs text-surface-500">Show or hide message preview text in the list.</p>
+                          </div>
+                          <button
+                            className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.showMessagePreview ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
+                            type="button"
+                            onClick={() => setSettings((current) => ({ ...current, showMessagePreview: !current.showMessagePreview }))}
+                          >
+                            {settings.showMessagePreview ? "Visible" : "Hidden"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-surface-200 bg-white p-4">
+                        <label className="block">
+                          <span className="mb-2 block text-sm font-medium text-surface-700">List date style</span>
+                          <select
+                            className="w-full rounded-2xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-900 outline-none"
+                            value={settings.listDateMode}
+                            onChange={(event) => {
+                              const mode = event.target.value === "relative" ? "relative" : "absolute";
+                              setSettings((current) => ({ ...current, listDateMode: mode }));
+                            }}
+                          >
+                            <option value="absolute">Absolute (date)</option>
+                            <option value="relative">Relative (today, yesterday, 2d ago)</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="rounded-2xl border border-surface-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-surface-800">Mark as read on open</p>
+                            <p className="text-xs text-surface-500">Automatically marks a message as read when opened.</p>
+                          </div>
+                          <button
+                            className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.markAsReadOnOpen ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
+                            type="button"
+                            onClick={() => setSettings((current) => ({ ...current, markAsReadOnOpen: !current.markAsReadOnOpen }))}
+                          >
+                            {settings.markAsReadOnOpen ? "On" : "Off"}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </section>
                 ) : null}
@@ -3020,6 +3177,69 @@ export function MailDashboard({
                           Refresh messages now
                         </button>
                       </div>
+                    </div>
+                  </section>
+                ) : null}
+
+                {settingsTab === "safety" ? (
+                  <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-surface-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-surface-800">Confirm before delete</p>
+                            <p className="text-xs text-surface-500">Prompt before deleting or moving a message to Trash.</p>
+                          </div>
+                          <button
+                            className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.confirmBeforeDelete ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
+                            type="button"
+                            onClick={() => setSettings((current) => ({ ...current, confirmBeforeDelete: !current.confirmBeforeDelete }))}
+                          >
+                            {settings.confirmBeforeDelete ? "On" : "Off"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-surface-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-surface-800">Confirm bulk actions</p>
+                            <p className="text-xs text-surface-500">Ask confirmation for bulk move or bulk flag operations.</p>
+                          </div>
+                          <button
+                            className={`rounded-xl px-3 py-2 text-xs font-semibold ${settings.confirmBeforeBulkActions ? "bg-emerald-100 text-emerald-700" : "bg-surface-200 text-surface-600"}`}
+                            type="button"
+                            onClick={() => setSettings((current) => ({ ...current, confirmBeforeBulkActions: !current.confirmBeforeBulkActions }))}
+                          >
+                            {settings.confirmBeforeBulkActions ? "On" : "Off"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-2xl border border-surface-200 bg-white p-4">
+                      <p className="text-sm font-semibold text-surface-800">Reset account preferences</p>
+                      <p className="mt-1 text-xs text-surface-500">Restores all settings on this modal to default values for the signed-in account.</p>
+                      <button
+                        className="mt-3 rounded-xl border border-brand-200 bg-surface-50 px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-50"
+                        type="button"
+                        onClick={() => {
+                          if (!window.confirm("Reset all mailbox preferences for this account?")) {
+                            return;
+                          }
+
+                          window.localStorage.removeItem(dashboardSettingsStorageKey);
+                          const resetSettings = readDashboardSettings(dashboardSettingsStorageKey, session.email);
+                          setSettings(resetSettings);
+                          setFilterUnread(resetSettings.defaultUnreadOnly);
+                          setDateRange(resetSettings.defaultDateRange);
+                          setCategoryFilter(resetSettings.defaultCategoryFilter);
+                          setStatusFilter(resetSettings.defaultStatusFilter);
+                          setMessageLimit(resetSettings.messagePageSize);
+                        }}
+                      >
+                        Reset preferences
+                      </button>
                     </div>
                   </section>
                 ) : null}
